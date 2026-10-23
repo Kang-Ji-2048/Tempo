@@ -1,0 +1,9 @@
+google-genai>=2.3.0
+fastapi
+uvicorn
+pymongo
+opencv-python
+mediapipe
+numpy
+python-multipart
+requests
