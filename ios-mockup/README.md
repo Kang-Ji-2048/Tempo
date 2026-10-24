@@ -4,13 +4,13 @@ A standalone, installable static prototype. No build step. Serve `dist/` over HT
 
 ## Included
 
-- Three-step local onboarding; Today, Review, Plan and You screens.
+- Android-aligned Home, Capture and Schedule navigation; separate Debrief, Live Cues, drill and athlete onboarding screens.
 - Device-only video preview, explicitly separate from the measured example review.
 - Saved drill, manual rep counter, completion history, pauseable rest timer and calendar-file export.
 - Home Screen manifest, Apple touch icon, safe-area layout and offline app-shell cache.
 - Watch integration explanation with no credentials or fabricated live readings.
 
-Profile and practice progress use localStorage. Videos use temporary object URLs and never leave the browser. Google Fonts is optional; system fonts work offline. Reset is available from You. The service worker caches only same-origin GET requests. No backend, HealthKit or AI requests run in this mockup.
+Profile and practice progress use localStorage. Videos use temporary object URLs and never leave the browser. Uses system fonts offline. Reset and installation guidance are available from Settings. The service worker caches only same-origin GET requests. No backend, HealthKit or AI requests run in this mockup.
 
 ## iPhone
 
@@ -26,4 +26,9 @@ Open the hosted URL in Safari, tap Share → Add to Home Screen, enable Open as 
 
 ## Validation
 
-JavaScript syntax checked with Node. Browser walkthrough verifies onboarding, example review, drill save, 10-rep completion gating and completion confirmation. Do not interpret the example elbow angle as medical advice or a new measurement. The original backend estimate came from 25 usable frames of a separate public badminton clip and has no ground-truth validation.
+JavaScript syntax checked with Node. Browser walkthrough verifies the Android navigation, Capture framing screen, example Debrief to drill flow, schedule persistence and the 15-second audio cue cooldown. Earlier checks verified onboarding and 10-rep completion gating. Do not interpret the example elbow angle as medical advice or a new measurement. The original backend estimate came from 25 usable frames of a separate public badminton clip and has no ground-truth validation.
+
+
+## Android visual alignment
+
+Uses Color.kt tokens (#0C0D11 background, #16181F surface, #D4FF00 accent), 24px cards, system typography and the Home/Capture/Schedule bottom bar. Secondary screens hide the bottom bar. Existing Today/Review/Plan/You bookmarked routes remain aliases. The home screen opens directly, as Android does; onboarding is available from its home card. The Android sample score and unverified calibrated status are intentionally replaced with labelled example content.
