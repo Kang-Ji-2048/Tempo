@@ -1,10 +1,11 @@
 """
 db_mongo.py - MongoDB Atlas Vector Search & Session Persistence (Taha)
 Connects via MONGODB_URI to the `badminton_coach` database (`strokes` and `players` collections),
-seeds pro reference strokes (Viktor Axelsen & Lee Zii Jia) with `is_pro_reference: True` and 6D `pose_vector`
-plus a London training partner document in `players`, and implements `find_closest_pro_pose(user_pose_vector)`
-using MongoDB Atlas `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`) with a Python
-cosine-similarity fallback if the Atlas index isn't built yet.
+seeds iconic Pro Tennis & Overhead Racket reference strokes (Roger Federer, Novak Djokovic,
+Carlos Alcaraz, Serena Williams, Jannik Sinner, Iga Swiatek, Rafael Nadal) with `is_pro_reference: True`
+and 6D `pose_vector` plus rich London training partner profiles in `players`, and implements
+`find_closest_pro_pose(user_pose_vector)` using MongoDB Atlas `$vectorSearch`
+(index: `pose_vector_index`, path: `pose_vector`) with a Python cosine-similarity fallback.
 """
 
 from __future__ import annotations
@@ -32,53 +33,161 @@ VECTOR_INDEX_NAME = "pose_vector_index"
 
 PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
     {
-        "reference_id": "pro_viktor_axelsen_smash",
-        "player_name": "Viktor Axelsen",
-        "country": "DEN",
-        "stroke_type": "Overhead Jump Smash",
+        "reference_id": "pro_roger_federer_serve_smash",
+        "player_name": "Roger Federer",
+        "country": "SUI",
+        "sport": "Tennis",
+        "stroke_type": "Pinpoint Overhead Serve & High-Contact Smash",
         "is_pro_reference": True,
-        "right_elbow_contact_deg": 175.0,
-        "right_shoulder_abduction_deg": 168.0,
-        "trunk_arch_deg": 172.0,
-        "right_knee_flexion_deg": 164.0,
-        "left_arm_balance_deg": 145.0,
-        "contact_height_norm": 0.94,
+        "right_elbow_contact_deg": 176.5,
+        "right_shoulder_abduction_deg": 169.0,
+        "trunk_arch_deg": 173.0,
+        "right_knee_flexion_deg": 165.0,
+        "left_arm_balance_deg": 148.0,
+        "contact_height_norm": 0.95,
         "pose_vector": [
-            round(175.0 / 180.0, 4),
-            round(168.0 / 180.0, 4),
-            round(172.0 / 180.0, 4),
-            round(164.0 / 180.0, 4),
-            round(145.0 / 180.0, 4),
-            0.94,
+            round(176.5 / 180.0, 4),
+            round(169.0 / 180.0, 4),
+            round(173.0 / 180.0, 4),
+            round(165.0 / 180.0, 4),
+            round(148.0 / 180.0, 4),
+            0.95,
         ],
         "biomechanical_notes": (
-            "Steepest overhead contact point on tour; near-full elbow extension (175.0 deg) "
-            "with explosive core bow-and-arrow trunk arch and high non-racket arm counter-balance."
+            "The gold standard of effortless overhead biomechanics (20x Grand Slam champion). "
+            "Near-full 176.5 deg elbow extension at impact, fluid trophy-pose thoracic arch (173.0 deg), "
+            "and textbook left-arm toss/counter-balance alignment for deceptive placement and zero joint strain."
         ),
     },
     {
-        "reference_id": "pro_lee_zii_jia_smash",
-        "player_name": "Lee Zii Jia",
-        "country": "MAS",
-        "stroke_type": "Backhand & Forehand Whip Smash",
+        "reference_id": "pro_novak_djokovic_serve_smash",
+        "player_name": "Novak Djokovic",
+        "country": "SRB",
+        "sport": "Tennis",
+        "stroke_type": "Elastic Kinetic-Chain Overhead Serve & Smash",
         "is_pro_reference": True,
-        "right_elbow_contact_deg": 171.0,
-        "right_shoulder_abduction_deg": 164.0,
-        "trunk_arch_deg": 169.0,
-        "right_knee_flexion_deg": 158.0,
-        "left_arm_balance_deg": 140.0,
+        "right_elbow_contact_deg": 174.0,
+        "right_shoulder_abduction_deg": 166.0,
+        "trunk_arch_deg": 171.0,
+        "right_knee_flexion_deg": 162.0,
+        "left_arm_balance_deg": 144.0,
+        "contact_height_norm": 0.93,
+        "pose_vector": [
+            round(174.0 / 180.0, 4),
+            round(166.0 / 180.0, 4),
+            round(171.0 / 180.0, 4),
+            round(162.0 / 180.0, 4),
+            round(144.0 / 180.0, 4),
+            0.93,
+        ],
+        "biomechanical_notes": (
+            "24x Grand Slam champion renowned for supreme flexibility and kinetic-chain stability under "
+            "extreme cardiovascular load. Maintains a 174.0 deg elbow extension and 166.0 deg shoulder "
+            "abduction plane to prevent late-match shoulder impingement."
+        ),
+    },
+    {
+        "reference_id": "pro_carlos_alcaraz_overhead",
+        "player_name": "Carlos Alcaraz",
+        "country": "ESP",
+        "sport": "Tennis",
+        "stroke_type": "Explosive Jump Overhead Smash & Kick Serve",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 171.5,
+        "right_shoulder_abduction_deg": 163.0,
+        "trunk_arch_deg": 168.5,
+        "right_knee_flexion_deg": 157.0,
+        "left_arm_balance_deg": 139.0,
         "contact_height_norm": 0.91,
         "pose_vector": [
-            round(171.0 / 180.0, 4),
-            round(164.0 / 180.0, 4),
-            round(169.0 / 180.0, 4),
-            round(158.0 / 180.0, 4),
-            round(140.0 / 180.0, 4),
+            round(171.5 / 180.0, 4),
+            round(163.0 / 180.0, 4),
+            round(168.5 / 180.0, 4),
+            round(157.0 / 180.0, 4),
+            round(139.0 / 180.0, 4),
             0.91,
         ],
         "biomechanical_notes": (
-            "Whip-like kinetic chain transfer with 171.0 deg elbow extension at shuttle impact, "
-            "generating extreme shuttle velocity through rapid forearm pronation."
+            "Dynamic, whip-like overhead acceleration with aggressive lower-body coil (157.0 deg knee drive) "
+            "and 171.5 deg elbow extension at contact, generating massive topspin and pace."
+        ),
+    },
+    {
+        "reference_id": "pro_serena_williams_serve",
+        "player_name": "Serena Williams",
+        "country": "USA",
+        "sport": "Tennis",
+        "stroke_type": "Power First Serve & Overhead Drive",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 175.5,
+        "right_shoulder_abduction_deg": 167.5,
+        "trunk_arch_deg": 172.0,
+        "right_knee_flexion_deg": 163.0,
+        "left_arm_balance_deg": 146.0,
+        "contact_height_norm": 0.94,
+        "pose_vector": [
+            round(175.5 / 180.0, 4),
+            round(167.5 / 180.0, 4),
+            round(172.0 / 180.0, 4),
+            round(163.0 / 180.0, 4),
+            round(146.0 / 180.0, 4),
+            0.94,
+        ],
+        "biomechanical_notes": (
+            "Widely considered the greatest overhead serve motion in tennis history (23x Grand Slam singles titles). "
+            "Combines deep leg drive with a 175.5 deg locked-in contact point and explosive forearm pronation."
+        ),
+    },
+    {
+        "reference_id": "pro_jannik_sinner_serve",
+        "player_name": "Jannik Sinner",
+        "country": "ITA",
+        "sport": "Tennis",
+        "stroke_type": "High-Leverage Platform Overhead Serve",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 173.0,
+        "right_shoulder_abduction_deg": 165.0,
+        "trunk_arch_deg": 170.0,
+        "right_knee_flexion_deg": 160.0,
+        "left_arm_balance_deg": 142.0,
+        "contact_height_norm": 0.92,
+        "pose_vector": [
+            round(173.0 / 180.0, 4),
+            round(165.0 / 180.0, 4),
+            round(170.0 / 180.0, 4),
+            round(160.0 / 180.0, 4),
+            round(142.0 / 180.0, 4),
+            0.92,
+        ],
+        "biomechanical_notes": (
+            "Long-lever kinetic chain with repeatable 173.0 deg elbow extension and clean hip-to-shoulder "
+            "separation for high first-serve percentage under pressure."
+        ),
+    },
+    {
+        "reference_id": "pro_rafael_nadal_overhead",
+        "player_name": "Rafael Nadal",
+        "country": "ESP",
+        "sport": "Tennis",
+        "stroke_type": "Skyhook Overhead Smash & Slice Serve",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 169.5,
+        "right_shoulder_abduction_deg": 160.0,
+        "trunk_arch_deg": 166.0,
+        "right_knee_flexion_deg": 154.0,
+        "left_arm_balance_deg": 135.0,
+        "contact_height_norm": 0.89,
+        "pose_vector": [
+            round(169.5 / 180.0, 4),
+            round(160.0 / 180.0, 4),
+            round(166.0 / 180.0, 4),
+            round(154.0 / 180.0, 4),
+            round(135.0 / 180.0, 4),
+            0.89,
+        ],
+        "biomechanical_notes": (
+            "22x Grand Slam champion known for unmatched core torque and high-margin overhead smash stability "
+            "(169.5 deg contact extension with heavy wrist snap)."
         ),
     },
 ]
@@ -88,22 +197,44 @@ SEED_LONDON_PARTNERS: List[Dict[str, Any]] = [
         "player_id": "partner_london_finsbury_01",
         "name": "Arjun Mehta",
         "city": "London",
-        "preferred_venue": "Finsbury Leisure Centre (EC1V)",
-        "skill_level": "Advanced Club / County",
-        "focus_area": "Overhead Rear-Court Clear & Jump Smash Consistency",
+        "preferred_venue": "Islington Tennis & Racket Centre / Finsbury Leisure (EC1V)",
+        "skill_level": "LTA Rating 3.2 / Advanced Club",
+        "focus_area": "Roger Federer Overhead Extension & High-Contact Serve/Smash Consistency",
         "availability": "Tonight 20:00 - 22:00 BST",
-        "target_pose_vector": [0.94, 0.90, 0.93, 0.88, 0.78, 0.89],
+        "target_pose_vector": [0.95, 0.91, 0.94, 0.89, 0.79, 0.91],
         "is_training_partner": True,
     },
     {
-        "player_id": "partner_london_ethos_02",
+        "player_id": "partner_london_regents_02",
         "name": "Chloe Tan",
         "city": "London",
-        "preferred_venue": "Ethos Sports Centre - Imperial College (SW7)",
-        "skill_level": "Intermediate-Advanced",
-        "focus_area": "High-Contact Overhead Biomechanics & Footwork Recovery",
+        "preferred_venue": "Regent's Park Tennis & Racket Courts (NW1)",
+        "skill_level": "LTA Rating 4.1 / Intermediate-Advanced",
+        "focus_area": "Novak Djokovic Kinetic-Chain Recovery & Trophy Pose Alignment",
         "availability": "Tomorrow 18:30 - 20:00 BST",
-        "target_pose_vector": [0.92, 0.88, 0.91, 0.86, 0.76, 0.87],
+        "target_pose_vector": [0.93, 0.89, 0.92, 0.87, 0.77, 0.89],
+        "is_training_partner": True,
+    },
+    {
+        "player_id": "partner_london_roehampton_03",
+        "name": "Marcus Vance",
+        "city": "London",
+        "preferred_venue": "National Tennis Centre - Roehampton (SW15)",
+        "skill_level": "LTA Rating 2.4 / County Performance",
+        "focus_area": "Carlos Alcaraz Explosive Overhead Smash & High-HR Rally Endurance",
+        "availability": "Saturday 10:00 - 12:00 BST",
+        "target_pose_vector": [0.95, 0.91, 0.94, 0.87, 0.77, 0.91],
+        "is_training_partner": True,
+    },
+    {
+        "player_id": "partner_london_bloomsbury_04",
+        "name": "Elena Rostova",
+        "city": "London",
+        "preferred_venue": "Bloomsbury Fitness & Courts - UCL (WC1E)",
+        "skill_level": "University 1st Team",
+        "focus_area": "Serena Williams First-Serve Pronation & Left-Arm Toss Balance",
+        "availability": "Tonight 21:00 - 22:30 BST",
+        "target_pose_vector": [0.97, 0.93, 0.95, 0.90, 0.81, 0.94],
         "is_training_partner": True,
     },
 ]
@@ -113,7 +244,7 @@ _MEMORY_STROKES: List[Dict[str, Any]] = [dict(doc) for doc in PRO_REFERENCE_STRO
 _MEMORY_PLAYERS: List[Dict[str, Any]] = [dict(doc) for doc in SEED_LONDON_PARTNERS]
 _MEMORY_APPROVALS: Dict[str, Dict[str, Any]] = {}
 
-_CLIENT: Optional[MongoClient] = None
+_CLIENT: Optional[Any] = None
 
 
 def get_mongo_client() -> Optional[Any]:
@@ -175,11 +306,11 @@ def check_mongo_health() -> Dict[str, Any]:
         }
 
 
-def seed_reference_data() -> Dict[str, Any]:
+def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, Any]:
     """
-    Seed Viktor Axelsen (`right_elbow_contact_deg: 175.0`) and Lee Zii Jia (`171.0`)
-    into `badminton_coach.strokes` with `is_pro_reference: True` and 6D `pose_vector`,
-    plus London training partner documents in `badminton_coach.players`.
+    Seed iconic Pro Tennis reference strokes (Roger Federer, Novak Djokovic, Carlos Alcaraz,
+    Serena Williams, Jannik Sinner, Rafael Nadal) into `badminton_coach.strokes` with
+    `is_pro_reference: True` and 6D `pose_vector`, plus London training partners in `badminton_coach.players`.
     """
     db = get_db()
     if db is None:
@@ -193,6 +324,15 @@ def seed_reference_data() -> Dict[str, Any]:
     try:
         strokes_col = db[STROKES_COLLECTION]
         players_col = db[PLAYERS_COLLECTION]
+
+        if remove_legacy_badminton_pros:
+            active_ref_ids = [r["reference_id"] for r in PRO_REFERENCE_STROKES]
+            strokes_col.delete_many(
+                {
+                    "is_pro_reference": True,
+                    "reference_id": {"$nin": active_ref_ids},
+                }
+            )
 
         for ref in PRO_REFERENCE_STROKES:
             strokes_col.update_one(
@@ -243,7 +383,8 @@ def _strip_mongo_id(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
     """
-    Match `user_pose_vector` against pro badminton reference strokes using MongoDB Atlas
+    Match `user_pose_vector` against pro reference strokes (Roger Federer, Novak Djokovic,
+    Carlos Alcaraz, Serena Williams, Jannik Sinner, Rafael Nadal) using MongoDB Atlas
     `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`), with a Python
     cosine-similarity fallback if the Atlas index isn't built yet or MongoDB is offline.
     """
@@ -256,8 +397,8 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                         "index": VECTOR_INDEX_NAME,
                         "path": "pose_vector",
                         "queryVector": [float(x) for x in user_pose_vector],
-                        "numCandidates": 10,
-                        "limit": 2,
+                        "numCandidates": 20,
+                        "limit": 4,
                         "filter": {"is_pro_reference": True},
                     }
                 },
@@ -267,6 +408,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                         "reference_id": 1,
                         "player_name": 1,
                         "country": 1,
+                        "sport": 1,
                         "stroke_type": 1,
                         "is_pro_reference": 1,
                         "right_elbow_contact_deg": 1,
@@ -318,7 +460,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
 
 def find_training_partner(city: str = "London", user_pose_vector: Optional[List[float]] = None) -> Dict[str, Any]:
     """
-    Find a recommended badminton training partner in `players` collection (defaults to London).
+    Find a recommended training partner in `players` collection (defaults to London).
     """
     db = get_db()
     partners: List[Dict[str, Any]] = []

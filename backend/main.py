@@ -81,6 +81,7 @@ def health_check() -> Dict[str, Any]:
 
 
 @app.post("/pipeline/analyze-badminton")
+@app.post("/pipeline/analyze-stroke")
 async def analyze_badminton_pipeline(
     video: Optional[UploadFile] = File(default=None),
     user_name: str = Form(default="Sumanth"),

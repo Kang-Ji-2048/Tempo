@@ -47,8 +47,8 @@ def _build_deterministic_coaching_response(
     knee_deg = float(pose_data.get("right_knee_flexion_deg", 152.0))
     height_norm = float(pose_data.get("contact_height_norm", 0.78))
 
-    pro_name = pro_match.get("player_name", "Viktor Axelsen")
-    pro_elbow = float(pro_match.get("right_elbow_contact_deg", 175.0))
+    pro_name = pro_match.get("player_name", "Roger Federer")
+    pro_elbow = float(pro_match.get("right_elbow_contact_deg", 176.5))
     sim_score = float(pro_match.get("similarity_score", 0.98))
     elbow_gap = round(pro_elbow - elbow_deg, 1)
 
@@ -57,7 +57,7 @@ def _build_deterministic_coaching_response(
     fatigue = str(watch_metrics.get("fatigue_state", "MODERATE_FATIGUE_ELEVATED_LOAD"))
 
     partner_name = partner_match.get("name", "Arjun Mehta")
-    venue = partner_match.get("preferred_venue", "Finsbury Leisure Centre (EC1V)")
+    venue = partner_match.get("preferred_venue", "Islington Tennis & Racket Centre / Finsbury Leisure (EC1V)")
     slot = partner_match.get("availability", "Tonight 20:00 - 22:00 BST")
 
     if verification_status == "PASS":
@@ -65,37 +65,37 @@ def _build_deterministic_coaching_response(
             f"VERIFIED PASS: {user_name} achieved {elbow_deg:.1f}° right elbow extension at peak overhead contact "
             f"(>= {ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.1f}° threshold), closely tracking {pro_name}'s {pro_elbow:.1f}° "
             f"reference profile (cosine similarity {sim_score:.4f}). Shoulder abduction ({shoulder_deg:.1f}°) and "
-            f"trunk arch ({trunk_deg:.1f}°) maintain efficient kinetic-chain transfer even at {hr_bpm:.0f} BPM "
+            f"trophy-pose trunk arch ({trunk_deg:.1f}°) maintain efficient kinetic-chain transfer even at {hr_bpm:.0f} BPM "
             f"({fatigue})."
         )
         drill = (
-            f"Maintain high-contact steepness with 3x12 multi-shuttle rear-court jump-smash sequences at {venue}. "
+            f"Maintain high-contact serve/smash extension with 3x12 target-zone overhead sequences at {venue}. "
             f"Keep heart rate below 175 BPM with 45s active recovery between sets while reinforcing full forearm "
             f"pronation at peak reach ({height_norm:.2f} normalized height)."
         )
     else:
         diagnosis = (
-            f"VERIFIED FAIL: {user_name}'s right elbow angle collapsed to {elbow_deg:.1f}° at overhead shuttle impact "
+            f"VERIFIED FAIL: {user_name}'s right elbow angle collapsed to {elbow_deg:.1f}° at overhead impact "
             f"(below the {ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.1f}° biomechanical threshold and {elbow_gap:.1f}° below "
             f"{pro_name}'s {pro_elbow:.1f}° benchmark; vector similarity {sim_score:.4f}). Combined with Apple Watch "
-            f"biometrics ({hr_bpm:.0f} BPM, {calories:.0f} kcal, {fatigue}), cardiovascular fatigue is causing late "
-            f"preparation, dropped shoulder abduction ({shoulder_deg:.1f}°), and reduced knee drive ({knee_deg:.1f}°)."
+            f"biometrics ({hr_bpm:.0f} BPM, {calories:.0f} kcal, {fatigue}), cardiovascular fatigue is causing a dropped "
+            f"trophy pose, reduced shoulder abduction ({shoulder_deg:.1f}°), and late knee drive ({knee_deg:.1f}°)."
         )
         drill = (
-            f"Prescribe 4x10 shadow-to-shuttle overhead extension drills + non-racket left-arm counterbalance tracking "
-            f"before high-tempo rallies. Focus on hitting shuttle at full reach (>={ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.0f}° "
-            f"elbow extension) once HR recovers below 155 BPM."
+            f"Prescribe 4x10 trophy-pose to peak-reach overhead extension drills + non-racket left-arm toss/balance tracking "
+            f"before high-tempo points. Focus on contacting at full reach (>={ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.0f}° "
+            f"elbow extension like {pro_name}) once HR recovers below 155 BPM."
         )
 
     saint_job = {
         "plain_english_instruction": (
-            f"Stage a 60-minute badminton biomechanical correction session for {user_name} with London partner "
+            f"Stage a 60-minute overhead biomechanical correction session for {user_name} with London partner "
             f"{partner_name} at {venue} ({slot}) focusing on overhead elbow extension ({elbow_deg:.1f}° -> "
             f"{ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.0f}°+ target) matched to {pro_name}. Hold external court booking "
             f"and partner invite until {user_name} approves."
         ),
         "proactive_training_notification": (
-            f"Hey {user_name}! Your overhead smash check returned {verification_status} ({elbow_deg:.1f}° elbow angle "
+            f"Hey {user_name}! Your overhead stroke check returned {verification_status} ({elbow_deg:.1f}° elbow angle "
             f"at {hr_bpm:.0f} BPM vs {pro_name}'s {pro_elbow:.1f}°). I matched you with {partner_name} at {venue} "
             f"({slot}) for an overhead extension & recovery session—tap Approve to book Court 3 and send the invite."
         ),
@@ -221,7 +221,7 @@ def run_argon_and_saint_agent(
     partner_info = partner_match or {
         "name": "Arjun Mehta",
         "city": "London",
-        "preferred_venue": "Finsbury Leisure Centre (EC1V)",
+        "preferred_venue": "Islington Tennis & Racket Centre / Finsbury Leisure (EC1V)",
         "availability": "Tonight 20:00 - 22:00 BST",
     }
 
@@ -268,7 +268,7 @@ def run_argon_and_saint_agent(
     }
 
     prompt = (
-        f"You are Tempo, an elite Badminton Biomechanics & Autonomous Saint AI Coach.\n"
+        f"You are Tempo, an elite Overhead Racket Sports (Tennis & Badminton) Biomechanics & Autonomous Saint AI Coach.\n"
         f"Player: {user_name}\n"
         f"Deterministic Biomechanical Threshold Rule: right_elbow_contact_deg >= {ELBOW_EXTENSION_PASS_THRESHOLD_DEG} "
         f"is PASS, else FAIL.\n"
@@ -280,7 +280,7 @@ def run_argon_and_saint_agent(
         f"Return ONLY valid JSON with keys:\n"
         f"- verification_status: \"{verification_status}\"\n"
         f"- biomechanical_diagnosis: Concise biomechanical breakdown comparing {user_name}'s 3D angles and "
-        f"Apple Watch HR/fatigue against {pro_match.get('player_name', 'Viktor Axelsen')}.\n"
+        f"Apple Watch HR/fatigue against {pro_match.get('player_name', 'Roger Federer')}.\n"
         f"- live_drill_prescription: Specific on-court drill prescription adjusted for current heart rate/fatigue.\n"
         f"- saint_agent_job: Object containing plain_english_instruction, proactive_training_notification, "
         f"requires_human_approval (must be true), and approval_action_summary for booking {partner_info.get('preferred_venue')} "
