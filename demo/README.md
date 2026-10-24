@@ -1,20 +1,15 @@
-# Tempo browser demo deck
+# Tempo pitch deck
 
-Open `index.html` directly or serve it as a static page. It has no dependencies, external fonts, trackers or backend requests.
+`index.html` is the user-supplied **Tempo Pitch Deck.html**, copied without modifying its content or design. It replaces the earlier generated demo deck.
 
-- Arrow keys, Page Up/Down or Space change slides.
-- N toggles presenter notes. Notes are public presentation content, not secret data.
-- F toggles fullscreen where the browser permits it.
-- Home/End jump to the first/last slide.
-- `#6` links directly to the real-video check.
-- Browser Print creates a landscape slide handout with all slides.
+Open it in a browser or publish this directory as a static Vercel site. Its media is embedded; the supplied file requests Manrope fonts from Google Fonts.
 
-To add it to a Vercel site:
+Vercel configuration:
 
-- Next.js or Vite: copy this directory to the site's `public/demo/` directory and link to `/demo/`.
-- A plain static website: copy this directory to `demo/` in the published root.
-- A standalone Vercel project: publish this directory with framework preset Other and no build command.
+- Repository: Kang-Ji-2048/Tempo
+- Root directory: demo
+- Framework preset: Other
+- Build command: leave empty
+- Output directory: .
 
-No deployment configuration is included, so the deck will not override an existing site's routing or build settings.
-
-The site URL/source is still needed to integrate and publish it in the intended project. Update readiness statements before the actual demo if deployment, API mode or model quota changes.
+No backend connection is required to show the deck. This commit uploads the source to GitHub; it does not create a Vercel deployment.

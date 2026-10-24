@@ -47,4 +47,4 @@ the Watch receiver only.
 
 ## Demo slides
 
-The browser presentation is in [demo/index.html](demo/index.html). It includes eight slides, keyboard navigation, fullscreen mode and presenter notes. See [hosting instructions](demo/README.md) to mount it at /demo/ on the Vercel website. The website source has not yet been identified, so this does not publish the deck.
+The supplied Tempo pitch deck is in [demo/index.html](demo/index.html). See [hosting instructions](demo/README.md) to mount it at /demo/ on the Vercel website. The website source has not yet been identified, so this does not publish the deck.
