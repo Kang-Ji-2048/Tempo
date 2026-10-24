@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.tempo.app.SessionRepositoryTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-24T01:28:29" hostname="Sumanths-MacBook-Air.local" time="0.762">
+  <properties/>
+  <testcase name="testMockApiSessionRetrieval" classname="com.tempo.app.SessionRepositoryTest" time="0.35"/>
+  <testcase name="testMockApiScheduleRetrievalAndUpdate" classname="com.tempo.app.SessionRepositoryTest" time="0.412"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
