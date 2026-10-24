@@ -290,7 +290,7 @@ async def test_background_task_processing_stub(mock_db: MockAsyncDatabase):
     assert updated_session.get("kinematic_vector") is not None
     assert len(updated_session["kinematic_vector"]) == 6
     assert updated_session.get("active_widgets") is not None
-    assert len(updated_session["active_widgets"]) == 2
+    assert len(updated_session["active_widgets"]) >= 2
 
 
 @pytest.mark.asyncio

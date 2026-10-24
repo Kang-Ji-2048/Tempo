@@ -206,3 +206,36 @@ async def ingest_session(
         estimated_analysis_time_sec=settings.ESTIMATED_ANALYSIS_TIME_SEC,
         message="Session ingestion accepted. Biomechanical analysis initiated.",
     )
+
+
+@router.get(
+    "/{session_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=SessionRecord,
+    summary="Retrieve session analysis state and SDUI widgets",
+    description="Retrieves a session document including current processing status, Gemini 4 Argon biomechanical report, and active SDUI widgets.",
+)
+async def get_session(
+    session_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> SessionRecord:
+    """
+    Retrieves the complete session state, biomechanical feedback, and SDUI widgets.
+    """
+    sessions_collection = db[settings.SESSIONS_COLLECTION]
+    doc = await sessions_collection.find_one({"session_id": session_id})
+    if not doc:
+        doc = await sessions_collection.find_one({"_id": session_id})
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Practice session '{session_id}' not found.",
+        )
+
+    # Ensure session_id is populated from _id if missing
+    if "session_id" not in doc and "_id" in doc:
+        doc["session_id"] = str(doc["_id"])
+
+    return SessionRecord.model_validate(doc)

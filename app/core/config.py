@@ -3,7 +3,7 @@ app/core/config.py - Application Configuration using Pydantic Settings
 """
 
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,11 @@ class Settings(BaseSettings):
         "video/x-matroska",
         "video/webm",
     ]
+
+    # Gemini 4 Argon settings
+    GEMINI_MODEL: str = "gemini-4-argon"
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MOCK_MODE: bool = False
 
     # Processing parameters
     ESTIMATED_ANALYSIS_TIME_SEC: int = 8
