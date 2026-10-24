@@ -62,6 +62,7 @@ class FakeSessionDao : SessionDao {
     override suspend fun updateStatus(sessionId: String, status: String, updatedAt: Long) {}
     override suspend fun markFailed(sessionId: String, message: String, updatedAt: Long) {}
     override fun observeLatestSession(): Flow<SessionEntity?> = flowOf(null)
+    override suspend fun getLatestSession(): SessionEntity? = null
     override suspend fun clearAll() { cleared = true }
 }
 

@@ -144,3 +144,19 @@ sealed interface NetworkResult<out T> {
     }
     data object Loading : NetworkResult<Nothing>
 }
+
+@Serializable
+data class CoachConverseRequestDto(
+    @SerialName("user_id") val userId: String? = null,
+    val message: String,
+    @SerialName("session_id") val sessionId: String? = null
+)
+
+@Serializable
+data class CoachConverseResponseDto(
+    @SerialName("reply_text") val replyText: String,
+    @SerialName("audio_cue_url") val audioCueUrl: String? = null,
+    @SerialName("audio_cue_text") val audioCueText: String? = null,
+    @SerialName("dynamic_widgets") val dynamicWidgets: List<JsonObject> = emptyList(),
+    @SerialName("latency_ms") val latencyMs: Int? = null
+)

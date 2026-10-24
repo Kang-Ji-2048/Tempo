@@ -9,6 +9,7 @@ Implements:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -218,13 +219,13 @@ async def run_biomechanical_analysis(
     if llm_config.GEMINI_SEND_VIDEO and video_path and os.path.exists(video_path):
         try:
             logger.info("Uploading video to Gemini Files API: %s", video_path)
-            uploaded = client.files.upload(file=video_path)
+            uploaded = await asyncio.to_thread(client.files.upload, file=video_path)
             # Poll for processing
             timeout_s = 45
             poll_start = time.time()
             while uploaded.state == "PROCESSING" and time.time() - poll_start < timeout_s:
-                time.sleep(2)
-                uploaded = client.files.get(name=uploaded.name)
+                await asyncio.sleep(2)
+                uploaded = await asyncio.to_thread(client.files.get, name=uploaded.name)
 
             if uploaded.state == "ACTIVE":
                 video_file = uploaded
@@ -274,7 +275,8 @@ async def run_biomechanical_analysis(
     for attempt in range(2):
         try:
             call_start = time.perf_counter()
-            response = client.models.generate_content(
+            response = await asyncio.to_thread(
+                client.models.generate_content,
                 model=llm_config.GEMINI_MODEL,
                 contents=contents,
                 config=config,
@@ -297,7 +299,7 @@ async def run_biomechanical_analysis(
     # Clean up uploaded video file
     if video_file is not None:
         try:
-            client.files.delete(name=video_file.name)
+            await asyncio.to_thread(client.files.delete, name=video_file.name)
         except Exception:
             pass
 

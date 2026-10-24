@@ -655,4 +655,16 @@ class MockTempoApi @Inject constructor(
             lastCheckedAt = java.time.Instant.now().toString()
         )
     }
+
+    override suspend fun converseWithCoach(
+        request: com.tempo.app.network.models.CoachConverseRequestDto
+    ): com.tempo.app.network.models.CoachConverseResponseDto {
+        delay(250)
+        return com.tempo.app.network.models.CoachConverseResponseDto(
+            replyText = "Welcome to your training studio. I'm Thea, your biomechanics coach. Based on your recent overhead practice, we're locking in high contact apex and forearm pronation. What would you like to work on today?",
+            audioCueText = "Reach high at contact apex.",
+            dynamicWidgets = emptyList(),
+            latencyMs = 250
+        )
+    }
 }

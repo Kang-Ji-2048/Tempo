@@ -32,6 +32,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import com.tempo.app.feature.sdui.data.SduiRepository
 import java.io.File
 import javax.inject.Inject
 
@@ -40,6 +41,7 @@ class AnalysisViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val sessionDao: SessionDao,
     private val widgetParser: WidgetParser,
+    private val sduiRepository: SduiRepository,
     private val videoPoseExtractor: VideoPoseExtractor,
     private val keyframeStripExtractor: KeyframeStripExtractor,
     @ApplicationContext private val context: Context,
@@ -74,7 +76,15 @@ class AnalysisViewModel @Inject constructor(
     }
 
     fun onWidgetAction(action: WidgetAction) {
-        // Widget completion persistence is a separate feature.
+        viewModelScope.launch {
+            when (val res = sduiRepository.postAction(sessionId, action)) {
+                is NetworkResult.Success -> {
+                    _uiState.update { it.copy(widgets = res.data) }
+                }
+                is NetworkResult.Error -> Unit
+                is NetworkResult.Loading -> Unit
+            }
+        }
     }
 
     private fun fail(message: String) {

@@ -4,7 +4,7 @@ app/models/sdui.py - Server-Driven UI (SDUI) Widget Schemas for Android Jetpack 
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -90,6 +90,71 @@ class ConceptQuizWidget(BaseModel):
         description="Biomechanical explanation displayed after player selects an option",
         examples=["Hip rotation initiates the kinetic chain, allowing ground reaction force to multiply through the trunk into the arm."],
     )
+    id: str = Field(default="", description="Unique quiz ID")
+    answered_index: Optional[int] = Field(default=None, description="Index answered by user")
+
+
+class ScheduleSlot(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    slot_id: str
+    day_label: str
+    time_label: str
+    recommended: bool = False
+
+
+class CheckInScheduleWidget(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    widget_type: str = Field(default="CheckInScheduleWidget", description="SDUI widget discriminator")
+    id: str = "schedule"
+    title: str = "Weekly Practice Cadence"
+    subtitle: str = ""
+    days_of_week: List[str] = Field(default_factory=lambda: ["Monday", "Wednesday", "Friday"])
+    target_time_utc: str = "18:00"
+    duration_minutes: int = 45
+    priming_lead_minutes: int = 30
+    preferred_channel: str = "whatsapp"
+    slots: List[Dict[str, Any]] = Field(default_factory=list)
+    selected_slot_id: Optional[str] = None
+    reminder_note: Optional[str] = None
+
+
+class QuestionWidget(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    widget_type: str = Field(default="QuestionWidget", description="SDUI widget discriminator")
+    id: str
+    prompt: str
+    hint: str = "Type your answer…"
+    quick_replies: List[str] = Field(default_factory=list)
+    submitted_answer: Optional[str] = None
+
+
+class ChoiceOption(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    label: str
+    description: Optional[str] = None
+    emoji: Optional[str] = None
+
+
+class ChoiceWidget(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    widget_type: str = Field(default="ChoiceWidget", description="SDUI widget discriminator")
+    id: str
+    title: str
+    subtitle: str = ""
+    options: List[Dict[str, Any]] = Field(default_factory=list)
+    multi_select: bool = False
+    selected_option_ids: List[str] = Field(default_factory=list)
+
+
+class CapturePromptWidget(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    widget_type: str = Field(default="CapturePromptWidget", description="SDUI widget discriminator")
+    title: str
+    instruction: str
+    camera_hint: str
+    duration_s: int
+    id: str = "capture"
 
 
 class SDUIPayload(BaseModel):

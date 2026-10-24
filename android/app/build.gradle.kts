@@ -15,7 +15,7 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-val localBaseUrl = localProperties.getProperty("BASE_URL", "http://10.0.2.2:8000/")
+val localBaseUrl = localProperties.getProperty("BASE_URL", "http://localhost:8000/")
 val localDebugToken = localProperties.getProperty("TEMPO_DEBUG_TOKEN", "")
 val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "")
 val localUseMockApi = localProperties.getProperty("USE_MOCK_API", "false").toBoolean()

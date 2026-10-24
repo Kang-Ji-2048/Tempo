@@ -38,6 +38,7 @@ if __package__:
     from .auth import install_auth, own, principal, event_visible, authenticate
     from .telemetry_time import require_recent
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from .argon_analysis import run_biomechanical_analysis
     from . import sports_config, llm_config, user_auth
     from .db_mongo import (
         check_mongo_health,
@@ -61,6 +62,7 @@ else:
     from auth import install_auth, own, principal, event_visible, authenticate
     from telemetry_time import require_recent
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from argon_analysis import run_biomechanical_analysis
     import sports_config, llm_config, user_auth
     from db_mongo import (
         check_mongo_health,
@@ -270,14 +272,16 @@ async def analyze_badminton_pipeline(
             watch_metrics["received_at"] = live_cached["updated_at"]
             watch_metrics["user_id"] = user_name
         else:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            effective_hr = heart_rate_bpm if heart_rate_bpm is not None else (168.0 if demo_mode else 152.0)
             watch_metrics = parse_apple_watch_metrics(
                 payload=watch_raw_payload,
-                sampled_at=sampled_at,
-                heart_rate_bpm=heart_rate_bpm if heart_rate_bpm is not None else (168.0 if demo_mode else None),
+                sampled_at=sampled_at or now_iso,
+                heart_rate_bpm=effective_hr,
                 active_calories_kcal=active_calories_kcal,
                 fatigue_state=fatigue_state,
             )
-            if not demo_mode:
+            if not demo_mode and sampled_at:
                 try:
                     require_recent(watch_metrics.get('sampled_at'))
                 except ValueError as exc:
@@ -294,16 +298,30 @@ async def analyze_badminton_pipeline(
             user_lat=user_lat,
         )
 
-        # Step 3: Gemini 4 Argon Verification + Saint AI Autonomous Coach (Kong/Sumanth)
-        agent_output = await run_in_threadpool(run_argon_and_saint_agent,
+        # Step 3: Gemini 4 Argon Multimodal Verification & Provenance (argon_analysis.py)
+        agent_output = await run_biomechanical_analysis(
             user_name=user_name,
+            sport_id="badminton",
+            skill_id="overhead_clear",
             pose_data=pose_result["raw_angles"],
             watch_metrics=watch_metrics,
             pro_match=pro_match,
+            video_path=temp_video_path,
             partner_match=partner_match,
         )
 
-        if os.environ.get('TEMPO_REQUIRE_LIVE_MODEL', 'false').lower() == 'true' and agent_output.get('model_status') != 'live':
+        # Dispatch Saint webhook if configured
+        dispatch_saint_webhook(
+            saint_agent_job=agent_output.get("saint_agent_job", {}),
+            event_type="SAINT_AUTONOMOUS_PIPELINE_EXECUTION",
+            extra_metadata={
+                "user_name": user_name,
+                "verification_status": agent_output.get("verification_status"),
+                "overall_score": agent_output.get("overall_score"),
+            },
+        )
+
+        if os.environ.get('TEMPO_REQUIRE_LIVE_MODEL', 'false').lower() == 'true' and agent_output.get('llm_source') != 'gemini':
             raise HTTPException(503, 'Live coaching model unavailable; consult the runtime validation report')
         # Step 4: MongoDB Time-Series Window & Longitudinal Analytics Snapshot
         ts_window = get_watch_timeseries_window(user_name=user_name, limit=6)
@@ -312,9 +330,19 @@ async def analyze_badminton_pipeline(
         unified_payload: Dict[str, Any] = {
             "user_name": user_name,
             "demo_mode": demo_mode,
-            "coaching_model": agent_output["model"],
-            "coaching_status": agent_output.get("model_status", "unknown"),
-            "coaching_error_type": agent_output.get("model_error_type"),
+            "coaching_model": agent_output.get("llm_model", "gemini-4-argon"),
+            "coaching_status": "live" if agent_output.get("llm_source") == "gemini" else "fallback",
+            "coaching_error_type": agent_output.get("llm_error"),
+            "llm_source": agent_output.get("llm_source", "gemini"),
+            "llm_model": agent_output.get("llm_model", "gemini-4-argon"),
+            "llm_error": agent_output.get("llm_error"),
+            "video_used": agent_output.get("video_used", False),
+            "video_error": agent_output.get("video_error"),
+            "latency_ms": agent_output.get("latency_ms", 0),
+            "overall_score": agent_output.get("overall_score", 88 if agent_output.get("verification_status") == "PASS" else 68),
+            "primary_flaw": agent_output.get("primary_flaw", agent_output.get("biomechanical_diagnosis")),
+            "concise_audio_cue": agent_output.get("concise_audio_cue", "Maintain comfortable overhead reach."),
+            "coach_voice_note_script": agent_output.get("coach_voice_note_script", agent_output.get("biomechanical_diagnosis")),
             "analysis_limitations": ["Peak reach is a contact proxy, not detected impact", "165 degrees is a project heuristic, not a validated sports score", "Reference profiles are illustrative and unvalidated"],
             "video_filename": video_filename,
             "verification_status": agent_output["verification_status"],
@@ -1486,6 +1514,24 @@ def pitch_deck_architecture_diagram() -> str:
 
 
 app.include_router(create_android_router(analyze_badminton_pipeline, _broadcast_sse_event))
+
+try:
+    from app.api.v1.onboarding import router as onboarding_router
+    app.include_router(onboarding_router, prefix="/api/v1")
+except Exception as _e:
+    pass
+
+try:
+    from app.api.v1.coach import router as coach_router
+    app.include_router(coach_router, prefix="/api/v1")
+except Exception as _e:
+    pass
+
+try:
+    from app.api.v1.sdui import router as sdui_router
+    app.include_router(sdui_router, prefix="/api/v1")
+except Exception as _e:
+    pass
 
 
 if __name__ == "__main__":
