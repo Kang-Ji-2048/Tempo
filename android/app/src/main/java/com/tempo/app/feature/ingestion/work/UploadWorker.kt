@@ -7,6 +7,7 @@ import androidx.work.workDataOf
 import com.tempo.app.data.local.SessionDao
 import com.tempo.app.data.local.SessionEntity
 import com.tempo.app.feature.ingestion.Media3VideoCompressor
+import com.tempo.app.feature.ingestion.model.BiometricPointDto
 import com.tempo.app.feature.ingestion.model.SessionIngestMetadata
 import com.tempo.app.network.TempoApi
 import dagger.hilt.EntryPoint
@@ -30,6 +31,7 @@ interface UploadWorkerEntryPoint {
     fun tempoApi(): TempoApi
     fun sessionDao(): SessionDao
     fun json(): Json
+    fun telemetryRepository(): com.tempo.app.feature.biometrics.TelemetryRepository
 }
 
 /**
@@ -110,8 +112,30 @@ class UploadWorker(
 
         selection.writeText(fileToUpload.absolutePath)
 
-        // No Health Connect collector is connected yet. Empty telemetry explicitly
-        // asks the server for this player's paired Watch reading; never invent samples.
+        // 3. Collect real biometrics (Wear telemetry or Health Connect fallback; strictly [] if no sensor data)
+        val telemetryJson = inputData.getString(KEY_TELEMETRY)
+        val startMs = inputData.getLong(KEY_START_MS, 0L)
+        val endMs = inputData.getLong(KEY_END_MS, 0L)
+
+        val telemetryList: List<BiometricPointDto> = when {
+            !telemetryJson.isNullOrBlank() -> {
+                try {
+                    json.decodeFromString<List<BiometricPointDto>>(telemetryJson)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            startMs > 0L && endMs > startMs -> {
+                try {
+                    val telemetryRepo = entryPoint.telemetryRepository()
+                    telemetryRepo.getTelemetry(startMs, endMs)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            else -> emptyList()
+        }
+
         // 4. Construct multipart metadata
         val metadata = SessionIngestMetadata(
             sessionId = sessionId,
@@ -120,7 +144,7 @@ class UploadWorker(
             strokeType = strokeType,
             targetArchetype = targetArchetype,
             userIntent = userIntent,
-            telemetry = emptyList()
+            telemetry = telemetryList
         )
 
         val metadataJson = json.encodeToString(SessionIngestMetadata.serializer(), metadata)
@@ -169,5 +193,8 @@ class UploadWorker(
         const val KEY_STROKE_TYPE = "stroke_type"
         const val KEY_TARGET_ARCHETYPE = "target_archetype"
         const val KEY_USER_INTENT = "user_intent"
+        const val KEY_START_MS = "start_ms"
+        const val KEY_END_MS = "end_ms"
+        const val KEY_TELEMETRY = "telemetry"
     }
 }

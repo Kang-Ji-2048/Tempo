@@ -24,21 +24,31 @@ object IngestionScheduler {
         strokeType: String = "overhead_clear",
         targetArchetype: String? = "Axelsen",
         userIntent: String? = "Working on steep angle and early high contact reach",
-        userId: String
+        userId: String,
+        startMs: Long = 0L,
+        endMs: Long = 0L,
+        telemetryJson: String? = null
     ): androidx.work.Operation {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val inputData = workDataOf(
-            UploadWorker.KEY_SESSION_ID to sessionId,
-            UploadWorker.KEY_VIDEO_PATH to videoPath,
-            UploadWorker.KEY_SPORT to sport,
-            UploadWorker.KEY_STROKE_TYPE to strokeType,
-            UploadWorker.KEY_TARGET_ARCHETYPE to targetArchetype,
-            UploadWorker.KEY_USER_INTENT to userIntent,
-            UploadWorker.KEY_USER_ID to userId
-        )
+        val inputBuilder = androidx.work.Data.Builder()
+            .putString(UploadWorker.KEY_SESSION_ID, sessionId)
+            .putString(UploadWorker.KEY_VIDEO_PATH, videoPath)
+            .putString(UploadWorker.KEY_SPORT, sport)
+            .putString(UploadWorker.KEY_STROKE_TYPE, strokeType)
+            .putString(UploadWorker.KEY_TARGET_ARCHETYPE, targetArchetype)
+            .putString(UploadWorker.KEY_USER_INTENT, userIntent)
+            .putString(UploadWorker.KEY_USER_ID, userId)
+            .putLong(UploadWorker.KEY_START_MS, startMs)
+            .putLong(UploadWorker.KEY_END_MS, endMs)
+
+        if (!telemetryJson.isNullOrBlank()) {
+            inputBuilder.putString(UploadWorker.KEY_TELEMETRY, telemetryJson)
+        }
+
+        val inputData = inputBuilder.build()
 
         val uploadRequest = OneTimeWorkRequestBuilder<UploadWorker>()
             .setConstraints(constraints)

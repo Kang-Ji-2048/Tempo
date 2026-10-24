@@ -79,9 +79,14 @@ data class ConceptQuizWidget(
 @Serializable
 @SerialName("CheckInScheduleWidget")
 data class CheckInScheduleWidget(
-    val id: String,
-    val title: String,
+    val id: String = "schedule",
+    val title: String = "Weekly Practice Cadence",
     val subtitle: String = "",
+    @SerialName("days_of_week") val daysOfWeek: List<String> = listOf("Monday", "Wednesday", "Friday"),
+    @SerialName("target_time_utc") val targetTimeUtc: String = "18:00",
+    @SerialName("duration_minutes") val durationMinutes: Int = 45,
+    @SerialName("priming_lead_minutes") val primingLeadMinutes: Int = 30,
+    @SerialName("preferred_channel") val preferredChannel: String = "whatsapp",
     val slots: List<ScheduleSlot> = emptyList(),
     @SerialName("selected_slot_id") val selectedSlotId: String? = null,
     @SerialName("reminder_note") val reminderNote: String? = null,

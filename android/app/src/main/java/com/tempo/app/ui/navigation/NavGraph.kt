@@ -32,7 +32,13 @@ fun TempoNavGraph(
         composable(Screen.Onboarding.route) {
             OnboardingScreen(navController = navController)
         }
-        composable(Screen.Capture.route) {
+        composable(
+            route = Screen.Capture.route,
+            deepLinks = listOf(
+                androidx.navigation.navDeepLink { uriPattern = "tempo://app/capture" },
+                androidx.navigation.navDeepLink { uriPattern = "https://tempo.app/capture" }
+            )
+        ) {
             CaptureScreen(navController = navController)
         }
         composable(
@@ -42,6 +48,10 @@ fun TempoNavGraph(
                     type = NavType.StringType
                     defaultValue = "default_session"
                 }
+            ),
+            deepLinks = listOf(
+                androidx.navigation.navDeepLink { uriPattern = "tempo://app/analysis/{sessionId}" },
+                androidx.navigation.navDeepLink { uriPattern = "https://tempo.app/analysis/{sessionId}" }
             )
         ) { backStackEntry ->
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: "default_session"
@@ -50,7 +60,13 @@ fun TempoNavGraph(
         composable(Screen.Live.route) {
             LiveScreen(navController = navController)
         }
-        composable(Screen.Schedule.route) {
+        composable(
+            route = Screen.Schedule.route,
+            deepLinks = listOf(
+                androidx.navigation.navDeepLink { uriPattern = "tempo://app/schedule" },
+                androidx.navigation.navDeepLink { uriPattern = "https://tempo.app/schedule" }
+            )
+        ) {
             ScheduleScreen(navController = navController)
         }
         composable(Screen.SduiDebug.route) {

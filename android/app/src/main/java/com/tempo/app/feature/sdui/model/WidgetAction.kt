@@ -31,4 +31,13 @@ sealed interface WidgetAction {
         val durationS: Int,
         val cameraHint: String,
     ) : WidgetAction
+
+    data class ScheduleChanged(
+        override val widgetId: String,
+        val daysOfWeek: List<String>,
+        val targetTimeUtc: String,
+        val durationMinutes: Int,
+        val primingLeadMinutes: Int,
+        val preferredChannel: String,
+    ) : WidgetAction
 }

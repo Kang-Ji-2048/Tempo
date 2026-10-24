@@ -144,7 +144,9 @@ fun CaptureScreen(
                         strokeType = "overhead_clear",
                         targetArchetype = "Axelsen",
                         userIntent = state.prompt.title,
-                        userId = playerId.trim()
+                        userId = playerId.trim(),
+                        startMs = viewModel.recordingStartMs,
+                        endMs = viewModel.recordingEndMs
                     )
                     navController.navigate(Screen.Analysis.createRoute(sessionId))
                 },
@@ -166,7 +168,9 @@ fun CaptureScreen(
                         strokeType = "overhead_clear",
                         targetArchetype = "Axelsen",
                         userIntent = state.prompt.title,
-                        userId = playerId.trim()
+                        userId = playerId.trim(),
+                        startMs = viewModel.recordingStartMs,
+                        endMs = viewModel.recordingEndMs
                     )
                     navController.navigate(Screen.Analysis.createRoute(sessionId))
                 },

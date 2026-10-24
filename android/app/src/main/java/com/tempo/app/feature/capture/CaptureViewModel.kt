@@ -38,6 +38,11 @@ class CaptureViewModel @Inject constructor(
     private var countdownJob: Job? = null
     private var recordingJob: Job? = null
 
+    var recordingStartMs: Long = 0L
+        private set
+    var recordingEndMs: Long = 0L
+        private set
+
     private val _uiState = MutableStateFlow<CaptureUiState>(
         CaptureUiState.Preflight(
             prompt = activePrompt,
@@ -111,6 +116,7 @@ class CaptureViewModel @Inject constructor(
     fun onRecordingStarted(onAutoStopCamera: () -> Unit) {
         countdownJob?.cancel()
         recordingJob?.cancel()
+        recordingStartMs = System.currentTimeMillis()
         val duration = activePrompt.durationS.coerceAtLeast(5)
 
         recordingJob = viewModelScope.launch {
@@ -138,6 +144,7 @@ class CaptureViewModel @Inject constructor(
 
     fun onRecordingFinalized(file: File?) {
         recordingJob?.cancel()
+        recordingEndMs = System.currentTimeMillis()
         if (file != null && file.exists()) {
             _uiState.value = CaptureUiState.Review(file.absolutePath, activePrompt)
         } else {

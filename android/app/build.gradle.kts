@@ -9,12 +9,12 @@ plugins {
 
 android {
     namespace = "com.tempo.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.tempo.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -112,6 +112,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // Health Connect & Firebase
+    implementation(libs.androidx.health.connect)
+    implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.compose.ui.tooling)

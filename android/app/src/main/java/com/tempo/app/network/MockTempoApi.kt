@@ -20,6 +20,7 @@ import javax.inject.Singleton
 class MockTempoApi @Inject constructor() : TempoApi {
 
     private val pollCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val savedSchedules = java.util.concurrent.ConcurrentHashMap<String, UserScheduleDto>()
 
     override suspend fun ingestSession(
         metadata: RequestBody,
@@ -184,7 +185,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
 
     override suspend fun getSchedule(userId: String): UserScheduleDto {
         delay(200)
-        return UserScheduleDto(
+        return savedSchedules[userId] ?: UserScheduleDto(
             userId = userId,
             sport = "badminton",
             strokeType = "overhead_clear",
@@ -198,6 +199,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
 
     override suspend fun updateSchedule(schedule: UserScheduleDto): UserScheduleDto {
         delay(200)
+        savedSchedules[schedule.userId] = schedule
         return schedule
     }
 

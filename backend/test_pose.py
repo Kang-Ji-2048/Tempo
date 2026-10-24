@@ -186,7 +186,7 @@ class PoseTests(unittest.TestCase):
             destination = Path(directory) / 'pose.task'
             destination.write_bytes(b'test')
             with patch.object(setup, 'MODEL_SHA256', setup.hashlib.sha256(b'test').hexdigest()), patch.object(setup.urllib.request, 'urlopen') as request:
-                self.assertEqual(setup.install_model(destination), destination)
+                self.assertEqual(setup.install_model(destination), destination.resolve())
             request.assert_not_called()
 
 

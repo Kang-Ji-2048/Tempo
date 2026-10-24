@@ -84,6 +84,7 @@ class SduiDebugViewModel @Inject constructor(
         is WidgetAction.SlotPicked -> "Slot booked"
         is WidgetAction.ChoiceSelected -> "Answer sent"
         is WidgetAction.CaptureRequested -> "Capture requested"
+        is WidgetAction.ScheduleChanged -> "Schedule updated ($targetTimeUtc UTC)"
     }
 
     private companion object {

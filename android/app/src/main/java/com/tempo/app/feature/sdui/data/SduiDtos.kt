@@ -44,6 +44,13 @@ fun WidgetAction.toRequest(sessionId: String): WidgetActionRequestDto {
             put("duration_s", durationS)
             put("camera_hint", cameraHint)
         }
+        is WidgetAction.ScheduleChanged -> "ScheduleChanged" to buildJsonObject {
+            put("days_of_week", JsonArray(daysOfWeek.map(::JsonPrimitive)))
+            put("target_time_utc", targetTimeUtc)
+            put("duration_minutes", durationMinutes)
+            put("priming_lead_minutes", primingLeadMinutes)
+            put("preferred_channel", preferredChannel)
+        }
     }
     return WidgetActionRequestDto(sessionId, type, widgetId, payload)
 }
