@@ -40,6 +40,7 @@ if __package__:
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     from .argon_analysis import run_biomechanical_analysis
     from . import sports_config, llm_config, user_auth, coach_converse
+    from .api.v1 import onboarding as onboarding_api
     from .db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -66,6 +67,7 @@ else:
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     from argon_analysis import run_biomechanical_analysis
     import sports_config, llm_config, user_auth, coach_converse
+    from api.v1 import onboarding as onboarding_api
     from db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -1523,11 +1525,8 @@ def pitch_deck_architecture_diagram() -> str:
 
 app.include_router(create_android_router(analyze_badminton_pipeline, _broadcast_sse_event))
 
-try:
-    from app.api.v1.onboarding import router as onboarding_router
-    app.include_router(onboarding_router, prefix="/api/v1")
-except Exception as _e:
-    pass
+# Shared-memory onboarding assessment + home feed (replaces app.api.v1.onboarding on the same path).
+app.include_router(onboarding_api.router)
 
 # Unified omnichannel Coach Thea (replaces the legacy app.api.v1.coach router on the same path).
 app.include_router(coach_converse.router)

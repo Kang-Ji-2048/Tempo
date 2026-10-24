@@ -32,3 +32,23 @@ data class OnboardingStepResponseDto(
     @SerialName("is_completed") val isCompleted: Boolean = false,
     @SerialName("user_profile") val userProfile: UserProfileDto? = null
 )
+
+@Serializable
+data class CoachMemoryHeaderDto(
+    val sport: String? = null,
+    @SerialName("sport_display") val sportDisplay: String? = null,
+    val level: String? = null,
+    val intensity: String? = null,
+    @SerialName("sessions_per_week") val sessionsPerWeek: Int = 0,
+    @SerialName("cadence_label") val cadenceLabel: String? = null,
+    @SerialName("completed_nodes") val completedNodes: Int = 0,
+    @SerialName("total_nodes") val totalNodes: Int = 0
+)
+
+/** `GET /api/v1/coach/memory`: the shared athlete_memory rendered as home-screen SDUI widgets. */
+@Serializable
+data class CoachMemoryResponseDto(
+    val header: CoachMemoryHeaderDto = CoachMemoryHeaderDto(),
+    val widgets: List<JsonObject> = emptyList(),
+    @SerialName("onboarding_complete") val onboardingComplete: Boolean = false
+)

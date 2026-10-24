@@ -101,12 +101,14 @@ fun HomeScreen(
     val latestSession by viewModel.latestSession.collectAsStateWithLifecycle()
     val debugState by viewModel.debugState.collectAsStateWithLifecycle()
     val conversationState by viewModel.conversationState.collectAsStateWithLifecycle()
+    val homeHeader by viewModel.homeHeader.collectAsStateWithLifecycle()
 
     var showDebugSheet by remember { mutableStateOf(false) }
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    val sportDisplay = profile?.sport?.replaceFirstChar { it.uppercase() }
+    val sportDisplay = homeHeader?.sportDisplay
+        ?: profile?.sport?.replaceFirstChar { it.uppercase() }
         ?: debugState.sport.takeIf { it.isNotBlank() && it != "Not selected" }?.replaceFirstChar { it.uppercase() }
         ?: "Badminton"
     val strokeDisplay = profile?.goal?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "Overhead Clear"
@@ -316,11 +318,41 @@ fun HomeScreen(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "$sportDisplay • $strokeDisplay",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = TextPrimaryWhite
-                            )
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = sportDisplay,
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = TextPrimaryWhite
+                                    )
+                                    homeHeader?.level?.let { level ->
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = AccentNeonVolt.copy(alpha = 0.15f),
+                                            border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.5f))
+                                        ) {
+                                            Text(
+                                                text = level.replaceFirstChar { it.uppercase() },
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = AccentNeonVolt,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                val cadence = homeHeader?.let { header ->
+                                    listOfNotNull(
+                                        header.intensity?.replaceFirstChar { it.uppercase() },
+                                        header.cadenceLabel
+                                    ).joinToString(" • ").ifBlank { null }
+                                }
+                                Text(
+                                    text = cadence ?: strokeDisplay,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted
+                                )
+                            }
                         }
                         Text(
                             text = "Tap to switch",

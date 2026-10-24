@@ -213,6 +213,11 @@ class MockTempoApi @Inject constructor(
         return schedule
     }
 
+    override suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto {
+        delay(150)
+        return com.tempo.app.network.models.CoachMemoryResponseDto()
+    }
+
     override suspend fun nextOnboardingStep(
         request: com.tempo.app.network.models.OnboardingStepRequestDto
     ): com.tempo.app.network.models.OnboardingStepResponseDto {

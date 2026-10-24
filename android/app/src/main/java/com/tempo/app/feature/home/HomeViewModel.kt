@@ -13,15 +13,13 @@ import com.tempo.app.data.local.UserProfileDao
 import com.tempo.app.data.local.UserProfileEntity
 import com.tempo.app.feature.sdui.data.SduiRepository
 import com.tempo.app.feature.sdui.data.WidgetParser
-import com.tempo.app.feature.sdui.model.ConceptQuizWidget
-import com.tempo.app.feature.sdui.model.DrillCardWidget
-import com.tempo.app.feature.sdui.model.PathNode
 import com.tempo.app.feature.sdui.model.PathProgressWidget
 import com.tempo.app.feature.sdui.model.Widget
 import com.tempo.app.feature.sdui.model.WidgetAction
 import com.tempo.app.network.TempoApi
 import com.tempo.app.network.models.AiStatusDto
 import com.tempo.app.network.models.CoachConverseRequestDto
+import com.tempo.app.network.models.CoachMemoryHeaderDto
 import com.tempo.app.network.models.NetworkResult
 import com.tempo.app.repository.AuthRepository
 import com.tempo.app.repository.UserProfileRepository
@@ -123,50 +121,39 @@ class HomeViewModel @Inject constructor(
                     audioCueText = "Maintain high contact apex."
                 )
             ),
-            activeWidgets = buildInitialWidgets()
+            activeWidgets = emptyList()
         )
     )
     val conversationState: StateFlow<CoachConversationState> = _conversationState.asStateFlow()
 
+    private val _homeHeader = MutableStateFlow<CoachMemoryHeaderDto?>(null)
+    val homeHeader: StateFlow<CoachMemoryHeaderDto?> = _homeHeader.asStateFlow()
+
     init {
-        loadLatestSessionWidgets()
+        refreshFromMemory()
     }
 
-    private fun buildInitialWidgets(): List<Widget> {
-        val sport = identity.sport?.replaceFirstChar { it.uppercase() } ?: "Badminton"
-        return listOf(
-            PathProgressWidget(
-                currentStreak = 5,
-                activeNodeId = "node_reach_02",
-                title = "$sport Overhead Mastery Path",
-                nodes = listOf(
-                    PathNode("node_setup_01", "Unit Turn & Coiling", "COMPLETED", 50),
-                    PathNode("node_reach_02", "Peak Reach Extension", "ACTIVE", 75),
-                    PathNode("node_pronation_03", "Forearm Pronation Snap", "LOCKED", 100),
-                    PathNode("node_smash_04", "Kinetic Jump Smash", "LOCKED", 150)
-                )
-            ),
-            DrillCardWidget(
-                id = "drill_shadow_reach",
-                title = "Primary Focus: Shadow Reach Extension",
-                instruction = "Perform 10 full-extension shadow swings reaching up to your highest vertical contact vertex without dropping the elbow.",
-                targetReps = 10,
-                focusCue = "Reach tall through contact apex"
-            ),
-            ConceptQuizWidget(
-                id = "quiz_contact_apex",
-                question = "Why is maintaining high contact apex critical in overhead power strokes?",
-                options = listOf(
-                    "It maximizes the downward steepness of the shuttlecock trajectory",
-                    "It reduces the cardiovascular heart rate load",
-                    "It delays opponent split-step reaction",
-                    "It dampens racket string vibration"
-                ),
-                correctIndex = 0,
-                explanation = "Contacting at peak extension raises the geometric release vertex, producing a steeper, more penetrating downward trajectory.",
-                answeredIndex = null
-            )
-        )
+    /**
+     * Renders home from the shared athlete_memory (plan path, active drills, quiz) via
+     * `GET /api/v1/coach/memory`; falls back to the latest session feed before onboarding.
+     */
+    fun refreshFromMemory(extraWidgets: List<Widget> = emptyList()) {
+        viewModelScope.launch {
+            val memory = try {
+                tempoApi.getCoachMemory()
+            } catch (_: Exception) {
+                null
+            }
+            if (memory != null) _homeHeader.value = memory.header
+            val memoryWidgets = memory?.widgets?.let(widgetParser::parse).orEmpty()
+            if (memoryWidgets.isEmpty() && extraWidgets.isEmpty()) {
+                loadLatestSessionWidgets()
+                return@launch
+            }
+            val memoryKeys = memoryWidgets.map { it.key }.toSet()
+            val extras = extraWidgets.filter { it !is PathProgressWidget && it.key !in memoryKeys }
+            _conversationState.update { it.copy(activeWidgets = memoryWidgets + extras) }
+        }
     }
 
     private fun loadLatestSessionWidgets() {
@@ -222,10 +209,11 @@ class HomeViewModel @Inject constructor(
                 _conversationState.update { current ->
                     current.copy(
                         isThinking = false,
-                        messages = current.messages + theaMsg,
-                        activeWidgets = newWidgets ?: current.activeWidgets
+                        messages = current.messages + theaMsg
                     )
                 }
+                // Thea's tools mutate athlete_memory, so re-render home from it.
+                refreshFromMemory(newWidgets.orEmpty())
             } catch (e: Exception) {
                 val fallbackMsg = TheaMessage(
                     sender = TheaSender.THEA,

@@ -68,6 +68,9 @@ interface TempoApi {
     @GET("health")
     suspend fun getHealth(): Map<String, String>
 
+    @GET("api/v1/coach/memory")
+    suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto
+
     @POST("api/v1/coach/converse")
     suspend fun converseWithCoach(
         @Body request: com.tempo.app.network.models.CoachConverseRequestDto

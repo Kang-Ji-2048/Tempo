@@ -12,6 +12,7 @@ import com.tempo.app.network.models.UserProfileDto
 import com.tempo.app.repository.OnboardingRepository
 import com.tempo.app.repository.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,7 +21,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import javax.inject.Inject
+
+private const val QUIZ_EXPLANATION_MS = 1200L
 
 data class OnboardingUiState(
     val stepId: String = "init",
@@ -31,8 +38,26 @@ data class OnboardingUiState(
     val userProfile: UserProfileDto? = null,
     val answers: Map<String, String> = emptyMap(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Schedule edits held until the athlete taps Continue (the card emits on every tweak). */
+    val pendingSchedule: PendingSchedule = PendingSchedule()
 )
+
+data class PendingSchedule(
+    val daysOfWeek: List<String>? = null,
+    val targetTimeUtc: String? = null,
+    val preferredChannel: String? = null
+) {
+    /** JSON understood by `/onboarding/next`, or "next" to accept the suggested schedule. */
+    fun toAnswer(): String {
+        if (daysOfWeek == null && targetTimeUtc == null && preferredChannel == null) return "next"
+        return buildJsonObject {
+            daysOfWeek?.let { days -> put("days_of_week", JsonArray(days.map { JsonPrimitive(it) })) }
+            targetTimeUtc?.let { put("target_time_utc", it) }
+            preferredChannel?.let { put("preferred_channel", it) }
+        }.toString()
+    }
+}
 
 sealed interface OnboardingNavigationEvent {
     data object NavigateToHome : OnboardingNavigationEvent
@@ -57,7 +82,17 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun loadInitialStep() {
-        fetchNextStep(stepId = "", answer = "")
+        // The sport picked on SportSelectionScreen is the first answer written to athlete_memory.
+        val sport = identity.sport
+        if (!sport.isNullOrBlank()) {
+            fetchNextStep(stepId = "sport", answer = sport)
+        } else {
+            fetchNextStep(stepId = "", answer = "")
+        }
+    }
+
+    fun submitSchedule() {
+        fetchNextStep(stepId = _uiState.value.stepId, answer = _uiState.value.pendingSchedule.toAnswer())
     }
 
     fun onWidgetAction(action: WidgetAction) {
@@ -71,7 +106,18 @@ class OnboardingViewModel @Inject constructor(
                 fetchNextStep(stepId = currentStep, answer = "captured")
             }
             is WidgetAction.QuizAnswered -> {
-                fetchNextStep(stepId = currentStep, answer = action.selectedIndex.toString())
+                viewModelScope.launch {
+                    delay(QUIZ_EXPLANATION_MS) // let the athlete read the explanation
+                    fetchNextStep(stepId = currentStep, answer = action.selectedIndex.toString())
+                }
+            }
+            is WidgetAction.ScheduleChanged -> {
+                _uiState.update {
+                    it.copy(pendingSchedule = PendingSchedule(action.daysOfWeek, action.targetTimeUtc, action.preferredChannel))
+                }
+            }
+            is WidgetAction.SlotPicked -> {
+                _uiState.update { it.copy(pendingSchedule = it.pendingSchedule.copy(targetTimeUtc = action.slotId)) }
             }
             else -> {
                 fetchNextStep(stepId = currentStep, answer = "next")
@@ -108,7 +154,8 @@ class OnboardingViewModel @Inject constructor(
                             isCompleted = response.isCompleted,
                             userProfile = response.userProfile,
                             answers = updatedAnswers,
-                            isLoading = false
+                            isLoading = false,
+                            pendingSchedule = PendingSchedule()
                         )
                     }
                 }
@@ -152,6 +199,7 @@ class OnboardingViewModel @Inject constructor(
                 updatedAt = System.currentTimeMillis()
             )
 
+            identity.sport = profile.sport
             userProfileRepository.saveUserProfile(entity)
             _navigationEvents.emit(OnboardingNavigationEvent.NavigateToHome)
         }
