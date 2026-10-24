@@ -20,8 +20,8 @@ from __future__ import annotations
 import datetime
 import math
 import os
-import random
-import string
+import secrets
+from threading import Lock
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -60,6 +60,7 @@ except ImportError:
         pass
 
 DB_NAME = "badminton_coach"
+WATCH_DB_NAME = os.environ.get("MONGODB_WATCH_DATABASE", DB_NAME).strip() or DB_NAME
 STROKES_COLLECTION = "strokes"
 PLAYERS_COLLECTION = "players"
 WATCH_TS_COLLECTION = "watch_telemetry_ts"
@@ -387,10 +388,11 @@ SEED_HISTORICAL_SESSIONS: List[Dict[str, Any]] = [
 # In-memory store so the pipeline works seamlessly even if MONGODB_URI is not reachable locally
 _MEMORY_STROKES: List[Dict[str, Any]] = [
     *[dict(doc) for doc in PRO_REFERENCE_STROKES],
-    *[dict(doc) for doc in SEED_HISTORICAL_SESSIONS],
+    *([dict(doc) for doc in SEED_HISTORICAL_SESSIONS] if os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true" else []),
 ]
 _MEMORY_PLAYERS: List[Dict[str, Any]] = [dict(doc) for doc in SEED_LONDON_PARTNERS]
 _MEMORY_APPROVALS: Dict[str, Dict[str, Any]] = {}
+_APPROVAL_LOCK = Lock()
 _LATEST_WATCH_METRICS: Dict[str, Dict[str, Any]] = {}
 _MEMORY_WATCH_TS: List[Dict[str, Any]] = []
 _MEMORY_PAIRINGS: Dict[str, Dict[str, Any]] = {}
@@ -417,12 +419,24 @@ def get_mongo_client() -> Optional[Any]:
         return None
 
 
-def get_db():
+def get_db(database_name: Optional[str] = None):
     """Return the `badminton_coach` database handle if connected, else None."""
     client = get_mongo_client()
     if client is None:
         return None
-    return client[DB_NAME]
+    return client[database_name or DB_NAME]
+
+
+def _ensure_watch_collection(db: Any) -> None:
+    """Prepare only watch storage; never create app/geo collections in the target DB."""
+    if WATCH_TS_COLLECTION not in db.list_collection_names():
+        db.create_collection(WATCH_TS_COLLECTION, timeseries={
+            "timeField": "timestamp", "metaField": "metadata", "granularity": "seconds",
+        })
+    options = db[WATCH_TS_COLLECTION].options()
+    timeseries = options.get("timeseries", {})
+    if timeseries.get("timeField") != "timestamp" or timeseries.get("metaField") != "metadata":
+        raise ValueError("Watch collection has an incompatible time-series schema")
 
 
 def _ensure_timeseries_and_geo_indexes(db: Any) -> Dict[str, Any]:
@@ -473,13 +487,14 @@ def check_mongo_health() -> Dict[str, Any]:
                 "timeseries_watch_telemetry",
                 "geospatial_2dsphere_partner_match",
                 "facet_bucket_fatigue_analytics",
-                "change_streams_live_push",
+                "process_local_sse_push",
             ],
         }
     try:
         pro_count = db[STROKES_COLLECTION].count_documents({"is_pro_reference": True})
         partner_count = db[PLAYERS_COLLECTION].count_documents({"city": "London", "is_training_partner": True})
-        ts_count = db[WATCH_TS_COLLECTION].count_documents({})
+        watch_db = get_db(WATCH_DB_NAME)
+        ts_count = watch_db[WATCH_TS_COLLECTION].count_documents({})
         return {
             "connected": True,
             "mode": "mongodb_atlas",
@@ -488,12 +503,13 @@ def check_mongo_health() -> Dict[str, Any]:
             "pro_references_count": pro_count,
             "london_partners_count": partner_count,
             "watch_timeseries_points": ts_count,
+            "watch_telemetry_database": WATCH_DB_NAME,
             "atlas_features": [
                 "atlas_vector_search",
                 "timeseries_watch_telemetry",
                 "geospatial_2dsphere_partner_match",
                 "facet_bucket_fatigue_analytics",
-                "change_streams_live_push",
+                "process_local_sse_push",
             ],
         }
     except Exception as exc:
@@ -505,7 +521,7 @@ def check_mongo_health() -> Dict[str, Any]:
         }
 
 
-def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, Any]:
+def seed_reference_data(remove_legacy_badminton_pros: bool = False) -> Dict[str, Any]:
     """
     Seed iconic Pro Tennis reference strokes (Roger Federer, Novak Djokovic, Carlos Alcaraz,
     Serena Williams, Jannik Sinner, Rafael Nadal), London training partners with GeoJSON coordinates,
@@ -541,7 +557,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
                 upsert=True,
             )
 
-        for hist in SEED_HISTORICAL_SESSIONS:
+        for hist in (SEED_HISTORICAL_SESSIONS if os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true" else []):
             strokes_col.update_one(
                 {"session_id": hist["session_id"]},
                 {"$set": hist},
@@ -567,7 +583,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
             )
 
         # Seed initial Apple Watch Time-Series telemetry points if empty
-        if db[WATCH_TS_COLLECTION].count_documents({}) == 0:
+        if os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true" and db[WATCH_TS_COLLECTION].count_documents({}) == 0:
             now = datetime.datetime.now(datetime.timezone.utc)
             sample_points = [
                 {
@@ -786,7 +802,7 @@ def create_watch_pairing_session(user_name: str = "user_1", android_device_id: s
     Create a 6-character pairing code (e.g. `TMPO-88`) in MongoDB so the Android Jetpack Compose app
     and the player's Apple Watch / iPhone HealthKit Shortcut link seamlessly without typing URLs.
     """
-    suffix = "".join(random.choices(string.digits, k=2))
+    suffix = secrets.token_hex(4).upper()
     pairing_code = f"TMPO-{suffix}"
     now = datetime.datetime.now(datetime.timezone.utc)
     doc = {
@@ -813,6 +829,17 @@ def create_watch_pairing_session(user_name: str = "user_1", android_device_id: s
     return doc
 
 
+def watch_pairing_owner(code: str) -> str:
+    pairing = _MEMORY_PAIRINGS.get(code)
+    if pairing is None:
+        db = get_db()
+        if db is not None:
+            pairing = db[WATCH_PAIRINGS_COLLECTION].find_one({'pairing_code': code})
+    if not pairing:
+        raise ValueError('Unknown pairing code')
+    return pairing['user_name']
+
+
 def save_live_watch_telemetry(
     user_name: str,
     metrics: Dict[str, Any],
@@ -824,14 +851,26 @@ def save_live_watch_telemetry(
     2. Latest player state in `players` so the Android app and next stroke analysis automatically use it.
     """
     resolved_user = (user_name or "user_1").strip()
-    if pairing_code and pairing_code in _MEMORY_PAIRINGS:
-        resolved_user = _MEMORY_PAIRINGS[pairing_code].get("user_name", resolved_user)
+    if pairing_code:
+        pairing = _MEMORY_PAIRINGS.get(pairing_code)
+        if pairing is None:
+            db = get_db()
+            if db is not None:
+                pairing = db[WATCH_PAIRINGS_COLLECTION].find_one({"pairing_code": pairing_code})
+        if pairing is None:
+            raise ValueError("Unknown pairing code")
+        expires_at = datetime.datetime.fromisoformat(pairing["expires_at"])
+        if expires_at <= datetime.datetime.now(datetime.timezone.utc):
+            raise ValueError("Pairing code has expired")
+        resolved_user = pairing["user_name"]
 
     key = resolved_user.lower()
     now_dt = datetime.datetime.now(datetime.timezone.utc)
 
     ts_point = {
-        "timestamp": now_dt,
+        "timestamp": datetime.datetime.fromisoformat(metrics["sampled_at"]) if metrics.get("sampled_at") else now_dt,
+        "received_at": now_dt,
+        "sampled_at": metrics.get("sampled_at"),
         "metadata": {
             "user_name": resolved_user,
             "device": "Apple Watch",
@@ -857,11 +896,20 @@ def save_live_watch_telemetry(
     _LATEST_WATCH_METRICS[key] = record
     _LATEST_WATCH_METRICS["latest"] = record
 
+    receipt = {"database": WATCH_DB_NAME, "collection": WATCH_TS_COLLECTION, "persisted": False}
+    record["storage"] = receipt
+    watch_db = get_db(WATCH_DB_NAME)
+    if watch_db is not None:
+        try:
+            _ensure_watch_collection(watch_db)
+            result = watch_db[WATCH_TS_COLLECTION].insert_one(dict(ts_point))
+            receipt["persisted"] = bool(result.acknowledged)
+        except Exception:
+            receipt["error"] = "watch_storage_write_failed"
+    # Latest player state remains in the core database; only telemetry is rerouted.
     db = get_db()
     if db is not None:
         try:
-            _ensure_timeseries_and_geo_indexes(db)
-            db[WATCH_TS_COLLECTION].insert_one(dict(ts_point))
             db[PLAYERS_COLLECTION].update_one(
                 {"player_id": f"live_watch_{key}"},
                 {"$set": {"player_id": f"live_watch_{key}", "is_live_watch": True, **record}},
@@ -877,15 +925,15 @@ def get_watch_timeseries_window(user_name: str = "user_1", limit: int = 15) -> D
     Query the MongoDB Time-Series collection (`watch_telemetry_ts`) using `$setWindowFields`
     to compute a rolling 3-sample moving-average Heart Rate and Fatigue Index for the Android app.
     """
-    db = get_db()
+    if not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000")
+    db = get_db(WATCH_DB_NAME)
     points: List[Dict[str, Any]] = []
     method = "in_memory_timeseries"
 
     if db is not None:
         try:
             match_stage = {"$match": {"metadata.user_name": user_name}}
-            if db[WATCH_TS_COLLECTION].count_documents({"metadata.user_name": user_name}) == 0:
-                match_stage = {"$match": {}}
             pipeline = [
                 match_stage,
                 {
@@ -927,6 +975,7 @@ def get_watch_timeseries_window(user_name: str = "user_1", limit: int = 15) -> D
     return {
         "user_name": user_name,
         "collection": WATCH_TS_COLLECTION,
+        "database": WATCH_DB_NAME,
         "aggregation_method": method,
         "sample_count": len(points),
         "samples": points,
@@ -934,11 +983,7 @@ def get_watch_timeseries_window(user_name: str = "user_1", limit: int = 15) -> D
 
 
 def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, Any]:
-    """
-    Run a multi-stage MongoDB `$facet` + `$bucket` aggregation pipeline on `strokes`
-    that correlates Apple Watch Heart Rate Zones (<145 BPM, 145-165 BPM, >165 BPM)
-    against `right_elbow_contact_deg` collapse and pass/fail rates.
-    """
+    """Summarize actual sessions by HR zone; never invent measurements for missing users."""
     db = get_db()
     if db is not None:
         try:
@@ -989,8 +1034,8 @@ def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, A
                 facet_data = agg_res[0]
                 zone_labels = {
                     0: "Zone 1-2 (<145 BPM - Optimal Recovery)",
-                    145: "Zone 3-4 (145-165 BPM - Moderate Load)",
-                    165: "Zone 5 (>165 BPM - High Fatigue Overload)",
+                    145: "Zone 3-4 (145-<165 BPM - Moderate Load)",
+                    165: "Zone 5 (>=165 BPM - High Fatigue Overload)",
                 }
                 buckets = []
                 for b in facet_data.get("hr_zone_buckets", []):
@@ -1006,57 +1051,54 @@ def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, A
                         }
                     )
                 summary = (facet_data.get("overall_summary") or [{}])[0]
-                peak_e = float(summary.get("peak_elbow_deg") or 173.2)
-                min_e = float(summary.get("min_elbow_deg") or 154.8)
+                low = next((b for b in buckets if b["hr_zone"].startswith("Zone 1")), None)
+                high = next((b for b in buckets if b["hr_zone"].startswith("Zone 5")), None)
+                comparable = low is not None and high is not None
+                peak_e = low["avg_elbow_contact_deg"] if comparable else 0.0
+                min_e = high["avg_elbow_contact_deg"] if comparable else 0.0
                 return {
                     "user_name": user_name,
                     "aggregation_pipeline": "mongodb_atlas_facet_bucket",
                     "fatigue_induced_elbow_drop_deg": round(peak_e - min_e, 1),
-                    "insight": (
-                        f"MongoDB $bucket aggregation shows {user_name}'s overhead elbow extension drops by "
-                        f"{round(peak_e - min_e, 1)}° (from {peak_e:.1f}° down to {min_e:.1f}°) when Apple Watch "
-                        f"heart rate enters Zone 5 (>165 BPM)."
-                    ),
+                    "has_comparable_zones": comparable,
+                    "insight": (f"Average elbow angle differs by {round(peak_e - min_e, 1)} degrees between low and high HR sessions. This association does not establish fatigue as the cause."
+                                if comparable else "Insufficient sessions across low and high HR zones to compare elbow angles."),
                     "hr_zone_buckets": buckets,
                     "overall_summary": _strip_mongo_id(summary),
                 }
         except Exception:
             pass
 
+    method = "in_memory_facet_fallback"
+    rows = [s for s in _MEMORY_STROKES
+            if s.get("user_name") == user_name and s.get("is_pro_reference") is False]
+    buckets = []
+    for low, high, label in [(0, 145, "Zone 1-2 (<145 BPM)"),
+                             (145, 165, "Zone 3-4 (145-<165 BPM)"),
+                             (165, float("inf"), "Zone 5 (>=165 BPM)")]:
+        group = [s for s in rows if low <= s["apple_watch_biometrics"]["heart_rate_bpm"] < high]
+        if not group:
+            continue
+        def avg(field):
+            return sum(field(s) for s in group) / len(group)
+        buckets.append({
+            "hr_zone": label, "sessions_count": len(group),
+            "avg_heart_rate_bpm": round(avg(lambda s: s["apple_watch_biometrics"]["heart_rate_bpm"]), 1),
+            "avg_elbow_contact_deg": round(avg(lambda s: s["pose_analysis"]["raw_angles"]["right_elbow_contact_deg"]), 1),
+            "avg_contact_height_norm": round(avg(lambda s: s["pose_analysis"]["raw_angles"]["contact_height_norm"]), 3),
+            "pass_count": sum(s.get("verification_status") == "PASS" for s in group),
+        })
+    low_zone = next((b for b in buckets if b["hr_zone"].startswith("Zone 1")), None)
+    high_zone = next((b for b in buckets if b["hr_zone"].startswith("Zone 5")), None)
+    comparable = low_zone is not None and high_zone is not None
+    drop = round(low_zone["avg_elbow_contact_deg"] - high_zone["avg_elbow_contact_deg"], 1) if comparable else 0.0
     return {
-        "user_name": user_name,
-        "aggregation_pipeline": "in_memory_facet_fallback",
-        "fatigue_induced_elbow_drop_deg": 18.4,
-        "insight": (
-            f"Biomechanical correlation shows {user_name}'s overhead elbow angle drops by 18.4° "
-            "when Apple Watch heart rate exceeds 165 BPM."
-        ),
-        "hr_zone_buckets": [
-            {
-                "hr_zone": "Zone 1-2 (<145 BPM - Optimal Recovery)",
-                "sessions_count": 1,
-                "avg_heart_rate_bpm": 134.0,
-                "avg_elbow_contact_deg": 173.2,
-                "avg_contact_height_norm": 0.92,
-                "pass_count": 1,
-            },
-            {
-                "hr_zone": "Zone 3-4 (145-165 BPM - Moderate Load)",
-                "sessions_count": 1,
-                "avg_heart_rate_bpm": 156.0,
-                "avg_elbow_contact_deg": 167.4,
-                "avg_contact_height_norm": 0.87,
-                "pass_count": 1,
-            },
-            {
-                "hr_zone": "Zone 5 (>165 BPM - High Fatigue Overload)",
-                "sessions_count": 1,
-                "avg_heart_rate_bpm": 178.0,
-                "avg_elbow_contact_deg": 154.8,
-                "avg_contact_height_norm": 0.76,
-                "pass_count": 0,
-            },
-        ],
+        "user_name": user_name, "aggregation_pipeline": method,
+        "fatigue_induced_elbow_drop_deg": drop, "has_comparable_zones": comparable,
+        "insight": (f"Average elbow angle differs by {drop} degrees between low and high HR sessions. "
+                    "This association does not establish fatigue as the cause." if comparable else
+                    "Insufficient sessions across low and high HR zones to compare elbow angles."),
+        "hr_zone_buckets": buckets, "overall_summary": {"total_sessions": len(rows)},
     }
 
 
@@ -1068,14 +1110,14 @@ def get_latest_watch_telemetry(user_name: Optional[str] = None) -> Optional[Dict
         key = user_name.strip().lower()
         if key in _LATEST_WATCH_METRICS:
             return _LATEST_WATCH_METRICS[key]
-    if "latest" in _LATEST_WATCH_METRICS:
+    if not user_name and "latest" in _LATEST_WATCH_METRICS:
         return _LATEST_WATCH_METRICS["latest"]
 
     db = get_db()
     if db is not None:
         try:
             doc = db[PLAYERS_COLLECTION].find_one(
-                {"is_live_watch": True},
+                {"is_live_watch": True, **({"user_name": user_name} if user_name else {})},
                 {"_id": 0},
                 sort=[("updated_at", -1)],
             )
@@ -1109,57 +1151,54 @@ def save_analysis_session(session_doc: Dict[str, Any]) -> str:
     return session_id
 
 
-def update_saint_approval(
-    session_id: Optional[str],
-    approved: bool,
-    reviewer_name: str = "user_1",
-    notes: Optional[str] = None,
-    dispatch_result: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Record human-in-the-loop approval/rejection of a staged Saint court booking & partner notification.
-    """
-    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    status_str = "APPROVED_AND_DISPATCHED" if approved else "REJECTED_BY_USER"
-
-    update_fields = {
-        "saint_approval_status": status_str,
-        "saint_approved": approved,
-        "saint_approved_by": reviewer_name,
-        "saint_approved_at": timestamp,
-        "saint_reviewer_notes": notes or "",
-        "saint_dispatch_result": dispatch_result or {},
-    }
-
+def get_analysis_session(session_id: str) -> Optional[Dict[str, Any]]:
     db = get_db()
-    session_record: Optional[Dict[str, Any]] = None
-
     if db is not None:
-        try:
-            query = {"session_id": session_id} if session_id else {"is_pro_reference": False}
-            sort_spec = [("created_at", -1)]
-            doc = db[STROKES_COLLECTION].find_one_and_update(
-                query,
-                {"$set": update_fields},
-                sort=sort_spec,
-                return_document=True,
-            )
-            if doc:
-                session_record = _strip_mongo_id(doc)
-        except Exception:
-            pass
+        # Approval is fail-closed when the configured database cannot be read.
+        doc = db[STROKES_COLLECTION].find_one({"session_id": session_id, "is_pro_reference": False})
+        return _strip_mongo_id(doc) if doc else None
+    return _MEMORY_APPROVALS.get(session_id)
 
-    if session_id and session_id in _MEMORY_APPROVALS:
-        _MEMORY_APPROVALS[session_id].update(update_fields)
-        session_record = _MEMORY_APPROVALS[session_id]
-    elif _MEMORY_APPROVALS:
-        latest_key = list(_MEMORY_APPROVALS.keys())[-1]
-        _MEMORY_APPROVALS[latest_key].update(update_fields)
-        session_record = _MEMORY_APPROVALS[latest_key]
-    else:
-        session_record = {
-            "session_id": session_id or f"session_{uuid.uuid4().hex[:8]}",
-            **update_fields,
-        }
 
-    return session_record
+def claim_saint_action(session_id: str, user_name: str) -> bool:
+    query = {"session_id": session_id, "user_name": user_name,
+             "saint_approval_status": "PENDING_HUMAN_APPROVAL"}
+    db = get_db()
+    if db is not None:
+        doc = db[STROKES_COLLECTION].find_one_and_update(
+            query, {"$set": {"saint_approval_status": "PROCESSING_APPROVAL"}})
+        if not doc:
+            return False
+    with _APPROVAL_LOCK:
+        record = _MEMORY_APPROVALS.get(session_id)
+        if db is None and (not record or record.get("user_name") != user_name or
+                          record.get("saint_approval_status") != "PENDING_HUMAN_APPROVAL"):
+            return False
+        if record:
+            record["saint_approval_status"] = "PROCESSING_APPROVAL"
+    return True
+
+
+def update_saint_approval(session_id: str, approved: bool, reviewer_name: str = "user_1",
+                          notes: Optional[str] = None,
+                          dispatch_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    dispatch = (dispatch_result or {}).get("webhook_dispatch", {})
+    status = ("APPROVED_AND_DISPATCHED" if dispatch.get("dispatched") else
+              "APPROVED_DISPATCH_FAILED" if dispatch.get("webhook_configured") else
+              "APPROVED_AWAITING_WEBHOOK") if approved else "REJECTED_BY_USER"
+    fields = {"saint_approval_status": status, "saint_approved": approved,
+              "saint_approved_by": reviewer_name,
+              "saint_approved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "saint_reviewer_notes": notes or "", "saint_dispatch_result": dispatch_result or {}}
+    db = get_db()
+    if db is not None:
+        result = db[STROKES_COLLECTION].update_one({"session_id": session_id}, {"$set": fields})
+        if not result.matched_count:
+            raise ValueError("Unknown analysis session")
+    with _APPROVAL_LOCK:
+        for record in _MEMORY_STROKES:
+            if record.get("session_id") == session_id:
+                record.update(fields)
+        if session_id in _MEMORY_APPROVALS:
+            _MEMORY_APPROVALS[session_id].update(fields)
+    return {"session_id": session_id, **fields}

@@ -189,7 +189,7 @@ fun AnalysisScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "Retry Analysis",
+                                text = "Retry",
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -204,6 +204,12 @@ fun AnalysisScreen(
                 DebriefHeaderCard(debrief = uiState.debrief!!)
             }
 
+            uiState.feedbackNotice?.let { message ->
+                item { Text(message, color = TextSecondarySilver) }
+            }
+            uiState.visualCorrectionMessage?.let { message ->
+                item { Text(message, color = TextSecondarySilver) }
+            }
             // Visual Correction Motion Player with 33-Landmark Pose Overlay & Scrub Bar
             item {
                 VisualCorrectionPlayer(
@@ -300,14 +306,14 @@ private fun DebriefHeaderCard(
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            text = "${debrief.overallScore}",
+                            text = debrief.overallScore?.toString() ?: "Unavailable",
                             fontSize = 44.sp,
                             fontWeight = FontWeight.Black,
                             color = AccentNeonVolt,
                             lineHeight = 44.sp
                         )
                         Text(
-                            text = " / 100",
+                            text = if (debrief.overallScore != null) " / 100" else "",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = TextMuted,

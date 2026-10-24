@@ -13,6 +13,7 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -44,9 +45,9 @@ object Media3VideoCompressor {
                     .addListener(object : Transformer.Listener {
                         override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                             if (outputFile.exists() && outputFile.length() > 0L) {
-                                continuation.resume(outputFile)
+                                if (continuation.isActive) continuation.resume(outputFile)
                             } else {
-                                continuation.resume(inputFile)
+                                if (continuation.isActive) continuation.resume(inputFile)
                             }
                         }
 
@@ -56,7 +57,7 @@ object Media3VideoCompressor {
                             exportException: ExportException
                         ) {
                             // On error, fallback gracefully to original file
-                            continuation.resume(inputFile)
+                            if (continuation.isActive) continuation.resume(inputFile)
                         }
                     })
                     .build()
@@ -73,6 +74,8 @@ object Media3VideoCompressor {
                     } catch (_: Exception) {}
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Fallback to original input file if any exception occurs during transformation setup
             inputFile

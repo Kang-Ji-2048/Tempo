@@ -134,6 +134,7 @@ fun PhaseKeyframeCard(
     val isImpact = phase.phaseName.startsWith("Imp", ignoreCase = true)
 
     val scoreColor = when {
+        score == null -> TextSecondarySilver
         score >= 88 -> AccentNeonVolt
         score >= 75 -> WarningAmber
         else -> ErrorRed
@@ -180,7 +181,7 @@ fun PhaseKeyframeCard(
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "$score% Match",
+                        text = score?.let { "$it% Match" } ?: "Score unavailable",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = scoreColor

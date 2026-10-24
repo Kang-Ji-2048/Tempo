@@ -7,7 +7,6 @@ import androidx.work.workDataOf
 import com.tempo.app.data.local.SessionDao
 import com.tempo.app.data.local.SessionEntity
 import com.tempo.app.feature.ingestion.Media3VideoCompressor
-import com.tempo.app.feature.ingestion.model.BiometricPointDto
 import com.tempo.app.feature.ingestion.model.SessionIngestMetadata
 import com.tempo.app.network.TempoApi
 import dagger.hilt.EntryPoint
@@ -20,6 +19,9 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
+import kotlinx.coroutines.CancellationException
+import retrofit2.HttpException
+import java.io.IOException
 import java.util.UUID
 
 @EntryPoint
@@ -48,7 +50,8 @@ class UploadWorker(
         val sessionId = inputData.getString(KEY_SESSION_ID) ?: UUID.randomUUID().toString()
         val videoPath = inputData.getString(KEY_VIDEO_PATH)
             ?: return Result.failure(workDataOf("error" to "Missing video_path input"))
-        val userId = inputData.getString(KEY_USER_ID) ?: "usr_sumanth_001"
+        val userId = inputData.getString(KEY_USER_ID)?.trim()?.takeIf { it.isNotBlank() }
+            ?: return Result.failure(workDataOf("error" to "Missing player ID"))
         val sport = inputData.getString(KEY_SPORT) ?: "badminton"
         val strokeType = inputData.getString(KEY_STROKE_TYPE) ?: "overhead_clear"
         val targetArchetype = inputData.getString(KEY_TARGET_ARCHETYPE) ?: "Axelsen"
@@ -76,35 +79,39 @@ class UploadWorker(
             createdAt = System.currentTimeMillis(),
             updatedAt = System.currentTimeMillis()
         )
+        val existing = sessionDao.getSessionById(sessionId)
+        if (existing?.status in listOf("PENDING", "ANALYZING", "COMPLETED")) {
+            return Result.success(workDataOf(KEY_SESSION_ID to sessionId))
+        }
         sessionDao.insertSession(initialEntity)
 
         val inputFile = File(videoPath)
         if (!inputFile.exists() || inputFile.length() == 0L) {
-            sessionDao.updateStatus(sessionId, "FAILED")
+            sessionDao.markFailed(sessionId, "Input video file does not exist or is empty")
             return Result.failure(workDataOf("error" to "Input video file does not exist or is empty"))
         }
 
         // 2. Compress to 720p using Media3 Transformer
         val compressedFile = File(applicationContext.cacheDir, "compressed_${sessionId}.mp4")
-        val fileToUpload = try {
-            Media3VideoCompressor.compressTo720p(
+        val selection = File(applicationContext.cacheDir, "upload_source_${sessionId}.txt")
+        val selected = selection.takeIf { it.exists() }?.readText()?.let(::File)?.takeIf { it.exists() && it.length() > 0L }
+        val fileToUpload = selected ?: try {
+            if (compressedFile.exists() && compressedFile.length() > 0L) compressedFile else Media3VideoCompressor.compressTo720p(
                 context = applicationContext,
                 inputFile = inputFile,
                 outputFile = compressedFile
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Graceful fallback to original file if compression fails
             inputFile
         }
 
-        // 3. Construct biometric telemetry time-series
-        val now = System.currentTimeMillis()
-        val telemetry = listOf(
-            BiometricPointDto(timestampMs = now - 2000, heartRate = 158, cadence = 38, activeEnergyBurned = 10.2),
-            BiometricPointDto(timestampMs = now - 1000, heartRate = 165, cadence = 42, activeEnergyBurned = 11.5),
-            BiometricPointDto(timestampMs = now, heartRate = 172, cadence = 44, activeEnergyBurned = 12.8)
-        )
+        selection.writeText(fileToUpload.absolutePath)
 
+        // No Health Connect collector is connected yet. Empty telemetry explicitly
+        // asks the server for this player's paired Watch reading; never invent samples.
         // 4. Construct multipart metadata
         val metadata = SessionIngestMetadata(
             sessionId = sessionId,
@@ -113,7 +120,7 @@ class UploadWorker(
             strokeType = strokeType,
             targetArchetype = targetArchetype,
             userIntent = userIntent,
-            telemetry = telemetry
+            telemetry = emptyList()
         )
 
         val metadataJson = json.encodeToString(SessionIngestMetadata.serializer(), metadata)
@@ -134,14 +141,21 @@ class UploadWorker(
             )
 
             val backendSessionId = response.sessionId.ifBlank { sessionId }
-            sessionDao.updateStatus(backendSessionId, "PENDING")
+            if (backendSessionId != sessionId) {
+                sessionDao.markFailed(sessionId, "Server returned a different session ID. Update the backend.")
+                return Result.failure(workDataOf("error" to "Session ID mismatch"))
+            }
+            sessionDao.updateStatus(sessionId, response.status)
 
             Result.success(workDataOf(KEY_SESSION_ID to backendSessionId))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (runAttemptCount < 3) {
+            val retryable = e is IOException || (e is HttpException && (e.code() >= 500 || e.code() == 429))
+            if (retryable && runAttemptCount < 3) {
                 Result.retry()
             } else {
-                sessionDao.updateStatus(sessionId, "FAILED")
+                sessionDao.markFailed(sessionId, e.message ?: "Upload failed")
                 Result.failure(workDataOf("error" to (e.message ?: "Upload failed")))
             }
         }

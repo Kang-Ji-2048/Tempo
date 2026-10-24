@@ -13,10 +13,26 @@ from __future__ import annotations
 
 import json
 import os
+import math
 from typing import Any, Dict, Optional
 
 import requests
 from google import genai
+from pydantic import BaseModel, Field
+from typing import Literal
+
+class CoachingJob(BaseModel):
+    plain_english_instruction: str = Field(min_length=1, max_length=4000)
+    proactive_training_notification: str = Field(min_length=1, max_length=4000)
+    requires_human_approval: bool
+    approval_action_summary: str = Field(min_length=1, max_length=4000)
+
+class CoachingResponse(BaseModel):
+    verification_status: Literal['PASS', 'FAIL']
+    biomechanical_diagnosis: str = Field(min_length=1, max_length=4000)
+    live_drill_prescription: str = Field(min_length=1, max_length=4000)
+    saint_agent_job: CoachingJob
+
 
 
 def _load_local_env() -> None:
@@ -49,6 +65,8 @@ def verify_biomechanical_threshold(right_elbow_contact_deg: float) -> str:
     Concrete Pass/Fail biomechanical verification loop:
     `right_elbow_contact_deg >= 165.0` deg = PASS, else FAIL.
     """
+    if not math.isfinite(float(right_elbow_contact_deg)) or not 0 <= float(right_elbow_contact_deg) <= 180:
+        raise ValueError("Elbow angle must be finite and between 0 and 180 degrees")
     return "PASS" if float(right_elbow_contact_deg) >= ELBOW_EXTENSION_PASS_THRESHOLD_DEG else "FAIL"
 
 
@@ -101,7 +119,7 @@ def _build_deterministic_coaching_response(
             f"VERIFIED FAIL: {user_name}'s right elbow angle collapsed to {elbow_deg:.1f}° at overhead impact "
             f"(below the {ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.1f}° biomechanical threshold and {elbow_gap:.1f}° below "
             f"{pro_name}'s {pro_elbow:.1f}° benchmark; vector similarity {sim_score:.4f}). Combined with Apple Watch "
-            f"biometrics ({hr_bpm:.0f} BPM, {calories:.0f} kcal, {fatigue}), cardiovascular fatigue is causing a dropped "
+            f"biometrics ({hr_bpm:.0f} BPM, {calories:.0f} kcal, {fatigue}), these observations do not establish that fatigue caused a dropped "
             f"trophy pose, reduced shoulder abduction ({shoulder_deg:.1f}°), and late knee drive ({knee_deg:.1f}°)."
         )
         drill = (
@@ -191,34 +209,25 @@ def _call_gemini_4_argon(prompt: str, response_schema: Dict[str, Any]) -> Option
 
     client = genai.Client(api_key=api_key)
 
-    # Support both the user-specified `config={"thinking_level": "high", "response_mime_type": "application/json"}`
-    # signature and the upstream `google-genai` Interactions API `generation_config` + `response_format` signature.
-    try:
-        interaction = client.interactions.create(
-            model="gemini-4-argon",
-            input=prompt,
-            config={
-                "thinking_level": "high",
-                "response_mime_type": "application/json",
-            },
-        )
-        return getattr(interaction, "output_text", None) or (
-            interaction.steps[-1].content[0].text if getattr(interaction, "steps", None) else None
-        )
-    except TypeError:
-        interaction = client.interactions.create(
-            model="gemini-4-argon",
-            input=prompt,
-            generation_config={"thinking_level": "high"},
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": response_schema,
-            },
-        )
-        return getattr(interaction, "output_text", None) or (
-            interaction.steps[-1].content[0].text if getattr(interaction, "steps", None) else None
-        )
+    interaction = client.interactions.create(
+        model=os.environ.get("GEMINI_MODEL", "gemini-4-argon"),
+        input=prompt,
+        generation_config={"thinking_level": "high"},
+        response_format={"type": "text", "mime_type": "application/json", "schema": response_schema},
+        timeout=30.0,
+    )
+    output_text = getattr(interaction, "output_text", None)
+    if output_text:
+        return output_text
+    chunks = []
+    for output in getattr(interaction, "outputs", None) or []:
+        if getattr(output, "type", None) == "text" and getattr(output, "text", None):
+            chunks.append(output.text)
+    for step in getattr(interaction, "steps", None) or []:
+        for content in getattr(step, "content", None) or []:
+            if getattr(content, "type", None) == "text" and getattr(content, "text", None):
+                chunks.append(content.text)
+    return "".join(chunks) or None
 
 
 def run_argon_and_saint_agent(
@@ -290,7 +299,12 @@ def run_argon_and_saint_agent(
         ],
     }
 
+    reference_for_prompt = pro_match if pro_match.get('validation_status') == 'validated' else {
+        'validation_status': 'unvalidated', 'note': 'No validated professional benchmark is available.'}
     prompt = (
+        "Use measured facts only. Highest overhead reach is not verified racket impact. "
+        "The 165-degree rule is a project heuristic, not a calibrated performance score. "
+        "Do not infer causation from fatigue or invent professional measurements.\n"
         f"You are Tempo, an elite Overhead Racket Sports (Tennis & Badminton) Biomechanics & Autonomous Saint AI Coach.\n"
         f"Player: {user_name}\n"
         f"Deterministic Biomechanical Threshold Rule: right_elbow_contact_deg >= {ELBOW_EXTENSION_PASS_THRESHOLD_DEG} "
@@ -298,7 +312,7 @@ def run_argon_and_saint_agent(
         f"Computed Verification Status (MUST KEEP EXACT): {verification_status}\n\n"
         f"Player 3D Joint Angles & Contact Height:\n{json.dumps(pose_data, indent=2)}\n\n"
         f"Apple Watch Biometrics:\n{json.dumps(watch_metrics, indent=2)}\n\n"
-        f"MongoDB Atlas Closest Pro Reference Match:\n{json.dumps(pro_match, indent=2)}\n\n"
+        f"MongoDB Atlas Closest Pro Reference Match:\n{json.dumps(reference_for_prompt, indent=2)}\n\n"
         f"Matched London Training Partner:\n{json.dumps(partner_info, indent=2)}\n\n"
         f"Return ONLY valid JSON with keys:\n"
         f"- verification_status: \"{verification_status}\"\n"
@@ -310,12 +324,16 @@ def run_argon_and_saint_agent(
         f"with {partner_info.get('name')}."
     )
 
-    model_used = "gemini-4-argon"
+    model_status = "missing_key" if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")) else "empty_output"
+    model_used = "deterministic-verified-fallback"
+    model_error_type = None
     raw_output: Optional[str] = None
     try:
         raw_output = _call_gemini_4_argon(prompt=prompt, response_schema=response_schema)
-    except Exception:
+    except Exception as exc:
         raw_output = None
+        model_status = "provider_error"
+        model_error_type = type(exc).__name__
 
     result = dict(baseline)
     if raw_output:
@@ -325,8 +343,10 @@ def run_argon_and_saint_agent(
                 cleaned = cleaned.strip("`")
                 if cleaned.lower().startswith("json"):
                     cleaned = cleaned[4:].strip()
-            parsed = json.loads(cleaned)
+            parsed = CoachingResponse.model_validate_json(cleaned).model_dump()
             if isinstance(parsed, dict):
+                model_used = os.environ.get("GEMINI_MODEL", "gemini-4-argon")
+                model_status = "live"
                 # Enforce the hard biomechanical pass/fail threshold verification loop
                 result["verification_status"] = verification_status
                 if parsed.get("biomechanical_diagnosis"):
@@ -347,24 +367,27 @@ def run_argon_and_saint_agent(
                     merged_job["requires_human_approval"] = True
                     result["saint_agent_job"] = merged_job
         except Exception:
-            pass
+            model_status = "invalid_output"
     else:
-        model_used = "gemini-4-argon (deterministic-verified-fallback)"
+        model_used = "deterministic-verified-fallback"
 
     # Ensure saint_agent_job always sets requires_human_approval = True before external actions
     result["verification_status"] = verification_status
     result["saint_agent_job"]["requires_human_approval"] = True
+    if pro_match.get('validation_status') != 'validated':
+        result['biomechanical_diagnosis'] = (
+            f"Measured right elbow extension at highest overhead reach: {float(pose_data['right_elbow_contact_deg']):.1f} degrees. "
+            f"Project heuristic screen: {verification_status} at {ELBOW_EXTENSION_PASS_THRESHOLD_DEG:.0f} degrees. "
+            "Highest reach is not verified racket impact. Reference profiles are illustrative and unvalidated. "
+            "This observation does not establish that fatigue caused a technique change."
+        )
+    result["model_error_type"] = model_error_type
+    result["model_status"] = model_status
     result["model"] = model_used
     result["elbow_threshold_deg"] = ELBOW_EXTENSION_PASS_THRESHOLD_DEG
 
-    webhook_status = dispatch_saint_webhook(
-        saint_agent_job=result["saint_agent_job"],
-        event_type="SAINT_JOB_STAGED_AWAITING_APPROVAL",
-        extra_metadata={
-            "user_name": user_name,
-            "verification_status": verification_status,
-            "right_elbow_contact_deg": elbow_deg,
-        },
-    )
-    result["saint_webhook_dispatch"] = webhook_status
+    result["saint_webhook_dispatch"] = {
+        "webhook_configured": bool(os.environ.get("SAINT_WEBHOOK_URL")),
+        "dispatched": False, "event_type": "SAINT_JOB_STAGED_AWAITING_APPROVAL",
+    }
     return result

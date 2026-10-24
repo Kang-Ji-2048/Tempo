@@ -17,7 +17,19 @@ class CapturePreflightTest {
 
     @Before
     fun setUp() {
-        viewModel = CaptureViewModel()
+        viewModel = CaptureViewModel(object : com.tempo.app.data.PlayerIdentity {
+            override var playerId = "test-player"
+        })
+    }
+
+    @Test
+    fun playerIdChangesArePersistedForTheNextUpload() {
+        val identity = object : com.tempo.app.data.PlayerIdentity { override var playerId = "alice" }
+        val model = CaptureViewModel(identity)
+        assertEquals("alice", model.playerId.value)
+        model.setPlayerId("bob")
+        assertEquals("bob", identity.playerId)
+        assertEquals("bob", model.playerId.value)
     }
 
     @Test

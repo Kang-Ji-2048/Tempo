@@ -27,7 +27,11 @@ class MockTempoApi @Inject constructor() : TempoApi {
     ): SessionIngestResponseDto {
         delay(400) // Simulate fast network turnaround
         return SessionIngestResponseDto(
-            sessionId = UUID.randomUUID().toString(),
+            sessionId = okio.Buffer().also { metadata.writeTo(it) }.readUtf8().let {
+                kotlinx.serialization.json.Json.parseToJsonElement(it)
+                    .let { element -> (element as? kotlinx.serialization.json.JsonObject)?.get("session_id") }
+                    ?.let { element -> (element as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            } ?: UUID.randomUUID().toString(),
             status = "PENDING",
             estimatedAnalysisTimeSec = 8,
             message = "Offline mock session ingestion accepted."

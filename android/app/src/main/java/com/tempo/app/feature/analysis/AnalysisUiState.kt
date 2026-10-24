@@ -14,7 +14,7 @@ enum class AnalysisStep {
 }
 
 data class BiomechanicalDebrief(
-    val overallScore: Int,
+    val overallScore: Int?,
     val primaryFlaw: String,
     val matchedArchetype: String?,
     val audioCue: String? = null,
@@ -33,5 +33,7 @@ data class AnalysisUiState(
     val kineticPhases: List<KineticPhaseUiModel> = emptyList(),
     val poseTrack: CachedVideoPoseTrack? = null,
     val keyframeComparisons: List<KeyframeComparison> = emptyList(),
+    val feedbackNotice: String? = null,
+    val visualCorrectionMessage: String? = null,
     val isLoadingVisualCorrections: Boolean = false
 )

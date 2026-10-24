@@ -87,6 +87,8 @@ fun CaptureScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val playerId by viewModel.playerId.collectAsStateWithLifecycle()
+    val accessToken by viewModel.accessToken.collectAsStateWithLifecycle()
 
     val requiredPermissions = remember {
         arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -128,6 +130,10 @@ fun CaptureScreen(
             ClipReviewScreen(
                 videoPath = state.videoPath,
                 promptTitle = state.prompt.title,
+                accessToken = accessToken,
+                onAccessTokenChanged = viewModel::setAccessToken,
+                playerId = playerId,
+                onPlayerIdChanged = viewModel::setPlayerId,
                 onUseClip = {
                     val sessionId = java.util.UUID.randomUUID().toString()
                     com.tempo.app.feature.ingestion.work.IngestionScheduler.scheduleUpload(
@@ -137,7 +143,8 @@ fun CaptureScreen(
                         sport = "badminton",
                         strokeType = "overhead_clear",
                         targetArchetype = "Axelsen",
-                        userIntent = state.prompt.title
+                        userIntent = state.prompt.title,
+                        userId = playerId.trim()
                     )
                     navController.navigate(Screen.Analysis.createRoute(sessionId))
                 },
@@ -158,7 +165,8 @@ fun CaptureScreen(
                         sport = "badminton",
                         strokeType = "overhead_clear",
                         targetArchetype = "Axelsen",
-                        userIntent = state.prompt.title
+                        userIntent = state.prompt.title,
+                        userId = playerId.trim()
                     )
                     navController.navigate(Screen.Analysis.createRoute(sessionId))
                 },

@@ -4,6 +4,8 @@ import com.tempo.app.network.TempoApi
 import com.tempo.app.network.models.NetworkResult
 import com.tempo.app.network.models.SessionRecordDto
 import com.tempo.app.network.models.UserScheduleDto
+import kotlinx.coroutines.CancellationException
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,8 +18,10 @@ class SessionRepositoryImpl @Inject constructor(
         return try {
             val response = api.getSession(sessionId)
             NetworkResult.Success(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            NetworkResult.Error(exception = e, message = e.message)
+            NetworkResult.Error(exception = e, code = (e as? HttpException)?.code(), message = e.message)
         }
     }
 
@@ -25,8 +29,10 @@ class SessionRepositoryImpl @Inject constructor(
         return try {
             val response = api.getSchedule(userId)
             NetworkResult.Success(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            NetworkResult.Error(exception = e, message = e.message)
+            NetworkResult.Error(exception = e, code = (e as? HttpException)?.code(), message = e.message)
         }
     }
 
@@ -34,8 +40,10 @@ class SessionRepositoryImpl @Inject constructor(
         return try {
             val response = api.updateSchedule(schedule)
             NetworkResult.Success(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            NetworkResult.Error(exception = e, message = e.message)
+            NetworkResult.Error(exception = e, code = (e as? HttpException)?.code(), message = e.message)
         }
     }
 }

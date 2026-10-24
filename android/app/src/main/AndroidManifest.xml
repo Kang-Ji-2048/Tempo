@@ -8,7 +8,7 @@
 
     <application
         android:name=".TempoApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="Tempo"
         android:roundIcon="@android:drawable/sym_def_app_icon"

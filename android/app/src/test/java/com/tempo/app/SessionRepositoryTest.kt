@@ -5,11 +5,35 @@ import com.tempo.app.network.models.NetworkResult
 import com.tempo.app.network.models.UserScheduleDto
 import com.tempo.app.repository.SessionRepositoryImpl
 import kotlinx.coroutines.runBlocking
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionRepositoryTest {
+
+    @Test
+    fun mockUploadPreservesTheAndroidSessionId() = runBlocking {
+        val metadata = """{"session_id":"stable-android-id","user_id":"alice"}"""
+            .toRequestBody("application/json".toMediaType())
+        val response = MockTempoApi().ingestSession(metadata, null)
+        assertEquals("stable-android-id", response.sessionId)
+    }
+
+    @Test
+    fun httpErrorRetainsStatusForPollingPolicy() = runBlocking {
+        val api = object : com.tempo.app.network.TempoApi by MockTempoApi() {
+            override suspend fun getSession(sessionId: String): com.tempo.app.network.models.SessionRecordDto {
+                throw retrofit2.HttpException(retrofit2.Response.error<Any>(403,
+                    "Denied".toResponseBody("text/plain".toMediaType())))
+            }
+        }
+        val result = SessionRepositoryImpl(api).getSession("private-session")
+        assertTrue(result is NetworkResult.Error)
+        assertEquals(403, (result as NetworkResult.Error).code)
+    }
 
     @Test
     fun testMockApiSessionRetrieval() = runBlocking {

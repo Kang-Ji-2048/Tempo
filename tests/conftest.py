@@ -10,7 +10,17 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.config import Settings
 from app.db.mongodb import get_database
-from app.main import create_application
+from app.api.v1.sessions import router as sessions_router
+from app.api.v1.live import router as live_router
+from app.api.v1.cadence import router as cadence_router
+
+
+def create_application():
+    """Isolated legacy service harness; production uses backend.main."""
+    application = FastAPI()
+    for router in (sessions_router, live_router, cadence_router):
+        application.include_router(router, prefix='/api/v1')
+    return application
 from app.services.storage import LocalStorageService, get_storage_service
 
 

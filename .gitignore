@@ -6,6 +6,9 @@ __pycache__/
 venv/
 ENV/
 *.mp4
+.tempo-auth.json
+.tempo-auth.tmp
+*.token
 
 # Android
 .gradle/

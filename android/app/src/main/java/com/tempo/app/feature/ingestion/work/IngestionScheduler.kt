@@ -8,7 +8,6 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 object IngestionScheduler {
@@ -25,8 +24,8 @@ object IngestionScheduler {
         strokeType: String = "overhead_clear",
         targetArchetype: String? = "Axelsen",
         userIntent: String? = "Working on steep angle and early high contact reach",
-        userId: String = "usr_sumanth_001"
-    ): UUID {
+        userId: String
+    ): androidx.work.Operation {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -52,12 +51,11 @@ object IngestionScheduler {
             .addTag("session_upload_$sessionId")
             .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
+        return WorkManager.getInstance(context).enqueueUniqueWork(
             "session_upload_$sessionId",
-            ExistingWorkPolicy.REPLACE,
+            ExistingWorkPolicy.KEEP,
             uploadRequest
         )
 
-        return uploadRequest.id
     }
 }

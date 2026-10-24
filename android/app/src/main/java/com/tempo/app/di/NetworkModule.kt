@@ -35,15 +35,23 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
+    fun provideOkHttpClient(identity: com.tempo.app.data.PlayerIdentity): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.BODY
+                HttpLoggingInterceptor.Level.BASIC
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
         }
+        logging.redactHeader("Authorization")
         return OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val token = identity.accessToken
+                val request = chain.request().newBuilder().apply {
+                    if (token.isNotBlank()) header("Authorization", "Bearer $token")
+                }.build()
+                chain.proceed(request)
+            }
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

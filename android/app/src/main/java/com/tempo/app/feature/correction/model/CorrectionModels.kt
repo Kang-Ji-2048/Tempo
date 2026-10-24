@@ -30,7 +30,7 @@ data class CachedVideoPoseTrack(
 data class KineticPhaseUiModel(
     @SerialName("phase_name") val phaseName: String,
     @SerialName("timestamp_ms") val timestampMs: Long,
-    @SerialName("form_accuracy_score") val formAccuracyScore: Int,
+    @SerialName("form_accuracy_score") val formAccuracyScore: Int? = null,
     val observation: String,
     @SerialName("joint_angles") val jointAngles: Map<String, Float> = emptyMap()
 )

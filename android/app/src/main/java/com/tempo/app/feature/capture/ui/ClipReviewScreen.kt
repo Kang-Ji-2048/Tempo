@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +58,10 @@ import java.io.File
 fun ClipReviewScreen(
     videoPath: String,
     promptTitle: String,
+    accessToken: String,
+    onAccessTokenChanged: (String) -> Unit,
+    playerId: String,
+    onPlayerIdChanged: (String) -> Unit,
     onUseClip: () -> Unit,
     onRetake: () -> Unit,
     modifier: Modifier = Modifier,
@@ -144,7 +149,23 @@ fun ClipReviewScreen(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            OutlinedTextField(
+                value = accessToken, onValueChange = onAccessTokenChanged,
+                label = { Text("Access token") },
+                supportingText = { Text("Enter once; stored securely on this phone") },
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = playerId,
+                onValueChange = onPlayerIdChanged,
+                label = { Text("Player ID") },
+                supportingText = { Text("Use the same ID as your Watch connection") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
             Button(
+                enabled = playerId.isNotBlank(),
                 onClick = onUseClip,
                 modifier = Modifier
                     .fillMaxWidth()

@@ -1,6 +1,6 @@
 """
 etl_pose.py - Video & Apple Watch ETL Pipeline (Kong)
-Scans uploaded .mp4 badminton stroke videos using OpenCV + MediaPipe Pose,
+Scans uploaded videos using OpenCV + MediaPipe Tasks Pose Landmarker,
 identifies peak overhead shuttle contact frame (minimum y coordinate of RIGHT_WRIST),
 computes 5 key 3D joint angles + normalized contact height, outputs raw angles and a
 6D normalized pose_vector, and parses Apple Watch workout JSON/XML biometrics.
@@ -24,32 +24,48 @@ try:
 except ImportError:
     cv2 = None  # type: ignore
 
+from pathlib import Path
+from threading import Lock
+import importlib.util
+import logging
+
+logger = logging.getLogger(__name__)
 mp = None
-HAS_MEDIAPIPE = False
-_MP_CHECKED = False
+_MP_LOCK = Lock()
+REQUIRED_LANDMARKS = (0, 11, 12, 13, 14, 16, 23, 24, 26, 28)
+MODEL_FILENAME = "pose_landmarker_full.task"
+
+
+def pose_model_path() -> Path:
+    configured = os.environ.get("TEMPO_POSE_MODEL_PATH", "").strip()
+    return Path(configured).expanduser().resolve() if configured else Path(__file__).parent / "models" / MODEL_FILENAME
+
+
+def get_pose_runtime_status() -> Dict[str, Any]:
+    """Cheap configuration check; successful inference is verified separately."""
+    model_present = pose_model_path().is_file()
+    installed = importlib.util.find_spec("mediapipe") is not None
+    return {"engine": "mediapipe_tasks_pose_landmarker", "model_present": model_present,
+            "mediapipe_installed": installed, "opencv_available": cv2 is not None,
+            "configured": model_present and installed and cv2 is not None,
+            "coordinate_space": "estimated_world_meters", "handedness": "right",
+            "contact_selection": "highest_visible_overhead_wrist_proxy"}
 
 
 def _ensure_mediapipe_loaded() -> bool:
-    global mp, HAS_MEDIAPIPE, _MP_CHECKED
-    if _MP_CHECKED:
-        return HAS_MEDIAPIPE
-    _MP_CHECKED = True
-    try:
-        import importlib.metadata as _meta
-
-        ver = _meta.version("mediapipe")
-        # mediapipe >= 1.0 removed the legacy mp.solutions.pose API
-        if int(ver.split(".")[0]) >= 1:
-            HAS_MEDIAPIPE = False
+    global mp
+    with _MP_LOCK:
+        if mp is not None:
+            return True
+        try:
+            import mediapipe as _mp
+            if not hasattr(_mp.tasks.vision, "PoseLandmarker"):
+                return False
+            mp = _mp
+            return True
+        except (ImportError, AttributeError, OSError):
+            logger.exception("MediaPipe Tasks could not be loaded")
             return False
-        import mediapipe as _mp
-
-        mp = _mp
-        HAS_MEDIAPIPE = hasattr(mp, "solutions") and hasattr(mp.solutions, "pose")
-    except Exception:
-        mp = None
-        HAS_MEDIAPIPE = False
-    return HAS_MEDIAPIPE
 
 
 # Clean fallback biometrics & pose when no full body is detected in a test clip or synthetic video
@@ -76,8 +92,8 @@ def compute_angle_3d(
 
     norm_a = np.linalg.norm(va)
     norm_c = np.linalg.norm(vc)
-    if norm_a < 1e-8 or norm_c < 1e-8:
-        return 180.0
+    if not np.isfinite(va).all() or not np.isfinite(vc).all() or norm_a < 1e-8 or norm_c < 1e-8:
+        raise ValueError("Joint coordinates must be finite and form nonzero segments")
 
     cos_theta = float(np.dot(va, vc) / (norm_a * norm_c))
     cos_theta = max(-1.0, min(1.0, cos_theta))
@@ -112,221 +128,134 @@ def _extract_landmark_3d(landmarks: Any, idx: int) -> Tuple[float, float, float]
     return (float(lm.x), float(lm.y), float(lm.z))
 
 
+def _pose_unavailable(status: str, frames_scanned: int = 0) -> Dict[str, Any]:
+    # Retain the demo contract; the HTTP layer refuses these values outside demo mode.
+    raw = dict(FALLBACK_RAW_ANGLES)
+    return {"status": status, "used_fallback": True, "frames_scanned": frames_scanned,
+            "peak_contact_frame": None, "raw_angles": raw, **raw,
+            "pose_vector": build_pose_vector(raw), "coordinate_space": "synthetic_demo",
+            "contact_selection": "unavailable", "valid_pose_frames": 0}
+
+
+def _angles_from_landmarks(world: Any, image: Any) -> Dict[str, float]:
+    def angle(a, b, c):
+        return compute_angle_3d(*(_extract_landmark_3d(world, i) for i in (a, b, c)))
+    return {"right_elbow_contact_deg": angle(12, 14, 16),
+            "right_shoulder_abduction_deg": angle(24, 12, 14),
+            "trunk_arch_deg": angle(12, 24, 26),
+            "right_knee_flexion_deg": angle(24, 26, 28),
+            "left_arm_balance_deg": angle(23, 11, 13),
+            # Height remains an image-space feature for the existing vector contract.
+            "contact_height_norm": round(1.0 - float(image[16].y), 4)}
+
+
+def _reliable_overhead_pose(image: Any, world: Any) -> bool:
+    if len(image) < 33 or len(world) < 33:
+        return False
+    for idx in REQUIRED_LANDMARKS:
+        landmark = image[idx]
+        confidence = (getattr(landmark, "visibility", None), getattr(landmark, "presence", None))
+        if any(value is None or not math.isfinite(value) or value < 0.5 for value in confidence):
+            return False
+        if not all(math.isfinite(v) for v in _extract_landmark_3d(image, idx) + _extract_landmark_3d(world, idx)):
+            return False
+        if not (0 <= landmark.x <= 1 and 0 <= landmark.y <= 1):
+            return False
+    return image[16].y < min(image[0].y, image[12].y) - 0.02
+
+
 def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
+    """Use Tasks VIDEO mode and world landmarks to measure a single right-handed player.
+
+    Select the highest reliable overhead wrist frame as a contact *candidate*.
+    This does not detect a racket, ball/shuttle, or actual impact.
     """
-    Scan an uploaded .mp4 badminton stroke video with OpenCV + MediaPipe Pose (`mp.solutions.pose`).
-    Identifies the peak overhead shuttle contact frame (minimum `y` coordinate of `RIGHT_WRIST`),
-    computes the 5 key 3D joint angles + `contact_height_norm` (`1.0 - wrist_y`), and outputs both
-    raw angles and the 6D normalized `pose_vector`.
-    Includes a clean fallback if no full body is detected in a test clip.
-    """
-    if not video_path or not os.path.exists(video_path) or cv2 is None:
-        raw_angles = dict(FALLBACK_RAW_ANGLES)
-        return {
-            "status": "fallback_no_video",
-            "used_fallback": True,
-            "frames_scanned": 0,
-            "peak_contact_frame": 0,
-            "raw_angles": raw_angles,
-            **raw_angles,
-            "pose_vector": build_pose_vector(raw_angles),
-        }
+    if not video_path or not os.path.isfile(video_path):
+        return _pose_unavailable("fallback_no_video")
+    if cv2 is None:
+        return _pose_unavailable("opencv_unavailable")
+    if not pose_model_path().is_file():
+        return _pose_unavailable("pose_model_missing")
+    if not _ensure_mediapipe_loaded():
+        return _pose_unavailable("mediapipe_tasks_unavailable")
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        raw_angles = dict(FALLBACK_RAW_ANGLES)
-        return {
-            "status": "fallback_unreadable_video",
-            "used_fallback": True,
-            "frames_scanned": 0,
-            "peak_contact_frame": 0,
-            "raw_angles": raw_angles,
-            **raw_angles,
-            "pose_vector": build_pose_vector(raw_angles),
-        }
-
-    best_wrist_y = float("inf")
-    best_frame_idx = -1
-    best_landmarks = None
+        cap.release()
+        return _pose_unavailable("fallback_unreadable_video")
     frames_scanned = 0
-
-    # Also track OpenCV kinematic keypoints across frames in case MediaPipe solutions API
-    # is unavailable (Python 3.13 / mediapipe>=1.x) or the clip is synthetic/distant-court footage.
-    cv_best_wrist_y = float("inf")
-    cv_best_frame_idx = 0
-    cv_best_keypoints: Optional[Dict[str, Tuple[float, float, float]]] = None
-    prev_gray: Optional[np.ndarray] = None
-
-    pose_ctx = None
-    if _ensure_mediapipe_loaded() and mp is not None:
-        mp_pose = mp.solutions.pose
-        pose_ctx = mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=1,
-            enable_segmentation=False,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        )
-
+    valid_frames = 0
+    ambiguous_frames = 0
+    best = None
+    best_y = float("inf")
+    fps = float(cap.get(cv2.CAP_PROP_FPS))
+    fps_estimated = not math.isfinite(fps) or fps <= 0
+    if fps_estimated:
+        fps = 30.0
+    last_timestamp = -1
     try:
-        while True:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                break
-            frames_scanned += 1
-            h, w = frame.shape[:2]
-            if h <= 0 or w <= 0:
-                continue
-
-            if pose_ctx is not None:
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = pose_ctx.process(rgb_frame)
-                if results.pose_landmarks and results.pose_landmarks.landmark:
-                    lms = results.pose_landmarks.landmark
-                    right_wrist = lms[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
-                    right_shoulder = lms[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER.value]
-                    right_hip = lms[mp.solutions.pose.PoseLandmark.RIGHT_HIP.value]
-
-                    if (
-                        getattr(right_wrist, "visibility", 1.0) >= 0.35
-                        and getattr(right_shoulder, "visibility", 1.0) >= 0.35
-                        and getattr(right_hip, "visibility", 1.0) >= 0.35
-                    ):
-                        wrist_y = float(right_wrist.y)
-                        if wrist_y < best_wrist_y:
-                            best_wrist_y = wrist_y
-                            best_frame_idx = frames_scanned - 1
-                            best_landmarks = lms
-
-            # OpenCV spatial/motion keypoint analysis per frame
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            if prev_gray is not None and prev_gray.shape == gray.shape:
-                diff = cv2.absdiff(gray, prev_gray)
-                active_mask = cv2.threshold(diff, 18, 255, cv2.THRESH_BINARY)[1]
-                if int(np.count_nonzero(active_mask)) < 25:
-                    active_mask = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
-            else:
-                active_mask = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
-            prev_gray = gray
-
-            ys, xs = np.where(active_mask > 0)
-            if len(ys) >= 15:
-                # Top-most active region corresponds to peak overhead racket/wrist contact
-                top_pct_y = float(np.percentile(ys, 3)) / float(h)
-                top_idx = int(np.argmin(ys))
-                wrist_x = float(xs[top_idx]) / float(w)
-                wrist_y = max(0.04, min(0.95, top_pct_y))
-
-                mid_y = float(np.percentile(ys, 45)) / float(h)
-                mid_x = float(np.median(xs)) / float(w)
-                bot_y = float(np.percentile(ys, 88)) / float(h)
-
-                # Reach ratio [0..1]: higher reach (smaller wrist_y) yields fuller elbow extension
-                reach_norm = max(0.0, min(1.0, 1.0 - wrist_y))
-                # Map reach_norm cleanly into realistic human overhead angles (~152 deg fatigued to ~176.5 deg pro extension)
-                lateral_bend = 0.0045 + max(0.0, min(0.024, (0.90 - reach_norm) * 0.095))
-
-                r_shoulder_pt = (mid_x + 0.04, wrist_y + 0.24, 0.0)
-                r_wrist_pt = (wrist_x, wrist_y, -0.01)
-                r_elbow_pt = (
-                    (r_shoulder_pt[0] + r_wrist_pt[0]) * 0.5 + lateral_bend,
-                    (r_shoulder_pt[1] + r_wrist_pt[1]) * 0.5,
-                    -0.005,
-                )
-                r_hip_pt = (mid_x + 0.03, max(r_shoulder_pt[1] + 0.24, mid_y + 0.14), 0.0)
-                r_knee_pt = (mid_x + 0.05 + lateral_bend * 0.3, max(r_hip_pt[1] + 0.18, bot_y - 0.12), 0.02)
-                r_ankle_pt = (mid_x + 0.03, max(r_knee_pt[1] + 0.16, bot_y), 0.0)
-                l_shoulder_pt = (mid_x - 0.05, r_shoulder_pt[1], 0.0)
-                l_hip_pt = (mid_x - 0.04, r_hip_pt[1], 0.0)
-                l_elbow_pt = (mid_x - 0.14, r_shoulder_pt[1] - (0.10 if reach_norm >= 0.82 else 0.02), -0.02)
-
-                if wrist_y < cv_best_wrist_y:
-                    cv_best_wrist_y = wrist_y
-                    cv_best_frame_idx = frames_scanned - 1
-                    cv_best_keypoints = {
-                        "r_shoulder": r_shoulder_pt,
-                        "r_elbow": r_elbow_pt,
-                        "r_wrist": r_wrist_pt,
-                        "r_hip": r_hip_pt,
-                        "r_knee": r_knee_pt,
-                        "r_ankle": r_ankle_pt,
-                        "l_shoulder": l_shoulder_pt,
-                        "l_elbow": l_elbow_pt,
-                        "l_hip": l_hip_pt,
-                    }
+        options = mp.tasks.vision.PoseLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=str(pose_model_path())),
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            num_poses=2, min_pose_detection_confidence=0.5,
+            min_pose_presence_confidence=0.5, min_tracking_confidence=0.5,
+            output_segmentation_masks=False,
+        )
+        with mp.tasks.vision.PoseLandmarker.create_from_options(options) as landmarker:
+            while True:
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    break
+                frame_idx = frames_scanned
+                frames_scanned += 1
+                # Prefer decoder presentation time, retaining strict increase for duplicate timestamps.
+                presentation_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC))
+                estimated_ms = round(frame_idx * 1000.0 / fps)
+                timestamp = max(last_timestamp + 1, round(presentation_ms) if math.isfinite(presentation_ms) and presentation_ms >= 0 else estimated_ms)
+                if presentation_ms == 0 and frame_idx > 0:
+                    timestamp = max(timestamp, estimated_ms)
+                last_timestamp = timestamp
+                rgb = np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                result = landmarker.detect_for_video(image, timestamp)
+                if len(result.pose_landmarks) > 1:
+                    ambiguous_frames += 1
+                    continue
+                if len(result.pose_landmarks) != 1 or len(result.pose_world_landmarks) != 1:
+                    continue
+                normalized, world = result.pose_landmarks[0], result.pose_world_landmarks[0]
+                if not _reliable_overhead_pose(normalized, world):
+                    continue
+                try:
+                    raw = _angles_from_landmarks(world, normalized)
+                except ValueError:
+                    continue
+                valid_frames += 1
+                if normalized[16].y < best_y:
+                    best_y = normalized[16].y
+                    best = (raw, frame_idx, timestamp,
+                            min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
+    except (ValueError, RuntimeError, OSError):
+        logger.exception("Pose Landmarker inference failed")
+        return _pose_unavailable("pose_inference_failed", frames_scanned)
     finally:
-        if pose_ctx is not None:
-            pose_ctx.close()
         cap.release()
 
-    if best_landmarks is not None and HAS_MEDIAPIPE:
-        PL = mp.solutions.pose.PoseLandmark
-        r_shoulder = _extract_landmark_3d(best_landmarks, PL.RIGHT_SHOULDER.value)
-        r_elbow = _extract_landmark_3d(best_landmarks, PL.RIGHT_ELBOW.value)
-        r_wrist = _extract_landmark_3d(best_landmarks, PL.RIGHT_WRIST.value)
-        r_hip = _extract_landmark_3d(best_landmarks, PL.RIGHT_HIP.value)
-        r_knee = _extract_landmark_3d(best_landmarks, PL.RIGHT_KNEE.value)
-        r_ankle = _extract_landmark_3d(best_landmarks, PL.RIGHT_ANKLE.value)
-        l_shoulder = _extract_landmark_3d(best_landmarks, PL.LEFT_SHOULDER.value)
-        l_elbow = _extract_landmark_3d(best_landmarks, PL.LEFT_ELBOW.value)
-        l_hip = _extract_landmark_3d(best_landmarks, PL.LEFT_HIP.value)
-        peak_idx = best_frame_idx
-        status_str = "detected"
-    elif cv_best_keypoints is not None and frames_scanned > 0:
-        r_shoulder = cv_best_keypoints["r_shoulder"]
-        r_elbow = cv_best_keypoints["r_elbow"]
-        r_wrist = cv_best_keypoints["r_wrist"]
-        r_hip = cv_best_keypoints["r_hip"]
-        r_knee = cv_best_keypoints["r_knee"]
-        r_ankle = cv_best_keypoints["r_ankle"]
-        l_shoulder = cv_best_keypoints["l_shoulder"]
-        l_elbow = cv_best_keypoints["l_elbow"]
-        l_hip = cv_best_keypoints["l_hip"]
-        peak_idx = cv_best_frame_idx
-        status_str = "detected_opencv_kinematics"
-    else:
-        raw_angles = dict(FALLBACK_RAW_ANGLES)
-        return {
-            "status": "fallback_no_full_body_detected",
-            "used_fallback": True,
-            "frames_scanned": frames_scanned,
-            "peak_contact_frame": 0,
-            "raw_angles": raw_angles,
-            **raw_angles,
-            "pose_vector": build_pose_vector(raw_angles),
-        }
-
-    # 1. Right elbow angle at contact (shoulder - elbow - wrist)
-    right_elbow_contact_deg = compute_angle_3d(r_shoulder, r_elbow, r_wrist)
-    # 2. Right shoulder abduction angle (hip - shoulder - elbow)
-    right_shoulder_abduction_deg = compute_angle_3d(r_hip, r_shoulder, r_elbow)
-    # 3. Trunk arch angle (shoulder - hip - knee)
-    trunk_arch_deg = compute_angle_3d(r_shoulder, r_hip, r_knee)
-    # 4. Right knee flexion angle (hip - knee - ankle)
-    right_knee_flexion_deg = compute_angle_3d(r_hip, r_knee, r_ankle)
-    # 5. Left arm balance angle (left hip - left shoulder - left elbow)
-    left_arm_balance_deg = compute_angle_3d(l_hip, l_shoulder, l_elbow)
-    # 6. Normalized contact height (1.0 - wrist_y)
-    contact_height_norm = round(max(0.0, min(1.0, 1.0 - float(r_wrist[1]))), 4)
-
-    raw_angles = {
-        "right_elbow_contact_deg": right_elbow_contact_deg,
-        "right_shoulder_abduction_deg": right_shoulder_abduction_deg,
-        "trunk_arch_deg": trunk_arch_deg,
-        "right_knee_flexion_deg": right_knee_flexion_deg,
-        "left_arm_balance_deg": left_arm_balance_deg,
-        "contact_height_norm": contact_height_norm,
-    }
-
-    return {
-        "status": status_str,
-        "used_fallback": False,
-        "frames_scanned": frames_scanned,
-        "peak_contact_frame": peak_idx,
-        "raw_angles": raw_angles,
-        **raw_angles,
-        "pose_vector": build_pose_vector(raw_angles),
-    }
+    # Reject the clip if another player was detected at any point; no identity tracking is implemented.
+    if ambiguous_frames:
+        return _pose_unavailable("multiple_players_detected", frames_scanned)
+    if best is None:
+        return _pose_unavailable("fallback_no_reliable_overhead_pose", frames_scanned)
+    raw, peak_idx, timestamp, visibility = best
+    return {"status": "detected", "used_fallback": False,
+            "frames_scanned": frames_scanned, "valid_pose_frames": valid_frames,
+            "peak_contact_frame": peak_idx, "peak_contact_timestamp_ms": timestamp,
+            "raw_angles": raw, **raw, "pose_vector": build_pose_vector(raw),
+            "engine": "mediapipe_tasks_pose_landmarker", "coordinate_space": "estimated_world_meters",
+            "contact_selection": "highest_visible_overhead_wrist_proxy",
+            "min_landmark_visibility": round(visibility, 4), "fps_estimated": fps_estimated,
+            "warnings": ["Monocular 3D pose estimate; actual racket impact is not detected.",
+                         "Right-handed single-player overhead analysis only."]}
 
 
 def _derive_fatigue_state(
@@ -387,6 +316,7 @@ def parse_apple_watch_metrics(
     heart_rate_bpm: Optional[float] = None,
     active_calories_kcal: Optional[float] = None,
     fatigue_state: Optional[str] = None,
+    sampled_at: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     ETL parser for Apple Watch workout biometrics:
@@ -395,6 +325,21 @@ def parse_apple_watch_metrics(
     2. Live Apple Watch HealthKit / Health Auto Export JSON payloads
     3. Direct form fields (`heart_rate_bpm`, `active_calories_kcal`, `fatigue_state`)
     """
+    if __package__:
+        from .telemetry_time import normalize
+    else:
+        from telemetry_time import normalize
+    sample_time = sampled_at
+    if isinstance(payload, dict):
+        sample_time = sample_time or payload.get('sampled_at')
+    elif isinstance(payload, (str, bytes)):
+        try:
+            decoded = json.loads(payload)
+            if isinstance(decoded, dict):
+                sample_time = sample_time or decoded.get('sampled_at')
+        except (ValueError, UnicodeError):
+            pass
+    sample_time = normalize(sample_time) if sample_time is not None else None
     hr: Optional[float] = float(heart_rate_bpm) if heart_rate_bpm is not None else None
     peak_hr: Optional[float] = None
     resting_hr: Optional[float] = None
@@ -406,10 +351,10 @@ def parse_apple_watch_metrics(
     source_format: str = "form_fields"
     f_state = fatigue_state
 
-    # Check if `payload` is a file path on disk
-    if isinstance(payload, str) and os.path.exists(payload) and os.path.isfile(payload):
-        with open(payload, "rb") as f:
-            payload = f.read()
+    if isinstance(payload, dict):
+        payload = json.dumps(payload, allow_nan=False)
+    if payload is not None and not isinstance(payload, (str, bytes)):
+        raise ValueError("Expected JSON, XML, or ZIP telemetry")
 
     if payload is not None:
         if isinstance(payload, dict):
@@ -448,7 +393,7 @@ def parse_apple_watch_metrics(
         elif isinstance(payload, (str, bytes)):
             if isinstance(payload, bytes):
                 raw_bytes = _extract_xml_bytes_if_zip(payload)
-                text = raw_bytes.decode("utf-8", errors="ignore").strip()
+                text = raw_bytes.decode("utf-8-sig", errors="strict").strip()
             else:
                 text = payload.strip()
 
@@ -461,35 +406,24 @@ def parse_apple_watch_metrics(
                         w = data["data"]["workouts"][-1]
                         data = {**data, **w}
 
-                    hr = float(
-                        data.get(
-                            "heart_rate_bpm",
-                            data.get("heartRateBpm", data.get("avgHeartRate", hr if hr is not None else 168.0)),
-                        )
-                    )
+                    measured_hr = data.get('heart_rate_bpm', data.get('heartRateBpm', data.get('avgHeartRate', hr)))
+                    hr = float(measured_hr) if measured_hr is not None else None
                     if "peak_heart_rate_bpm" in data or "maxHeartRate" in data:
                         peak_hr = float(data.get("peak_heart_rate_bpm", data.get("maxHeartRate")))
                     if "resting_heart_rate_bpm" in data or "restingHeartRate" in data:
                         resting_hr = float(data.get("resting_heart_rate_bpm", data.get("restingHeartRate")))
                     if "hrv_sdnn_ms" in data or "heartRateVariabilitySDNN" in data:
                         hrv_sdnn_ms = float(data.get("hrv_sdnn_ms", data.get("heartRateVariabilitySDNN")))
-                    cal = float(
-                        data.get(
-                            "active_calories_kcal",
-                            data.get(
-                                "activeCaloriesKcal",
-                                data.get("activeEnergyBurned", cal if cal is not None else 420.0),
-                            ),
-                        )
-                    )
+                    measured_cal = data.get('active_calories_kcal', data.get('activeCaloriesKcal', data.get('activeEnergyBurned', cal)))
+                    cal = float(measured_cal) if measured_cal is not None else None
                     if "workout_duration_min" in data or "durationMinutes" in data:
                         duration_min = float(data.get("workout_duration_min", data.get("durationMinutes")))
                     if "wrist_acceleration_peak_mps" in data:
                         wrist_speed_mps = float(data["wrist_acceleration_peak_mps"])
                     workout_type = str(data.get("workout_activity_type", data.get("workoutActivityType", workout_type)))
                     f_state = data.get("fatigue_state", data.get("fatigueState", f_state))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise ValueError("Malformed Apple Watch telemetry") from exc
 
             elif text.startswith("<"):
                 source_format = "apple_healthkit_xml"
@@ -573,8 +507,22 @@ def parse_apple_watch_metrics(
                         cal = workout_cal
                     elif record_cal_samples:
                         cal = sum(record_cal_samples)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    raise ValueError("Malformed Apple Watch telemetry") from exc
+
+            else:
+                raise ValueError("Expected JSON, XML, or ZIP telemetry")
+
+    for name, value in {"heart_rate_bpm": hr, "peak_heart_rate_bpm": peak_hr,
+                        "resting_heart_rate_bpm": resting_hr, "hrv_sdnn_ms": hrv_sdnn_ms,
+                        "active_calories_kcal": cal, "workout_duration_min": duration_min,
+                        "wrist_acceleration_peak_mps": wrist_speed_mps}.items():
+        if value is not None and (not math.isfinite(value) or value < 0):
+            raise ValueError(f"{name} must be finite and nonnegative")
+    if hr is not None and not 20 <= hr <= 250:
+        raise ValueError("heart_rate_bpm must be between 20 and 250")
+    if hr is None:
+        raise ValueError("A heart rate measurement is required")
 
     final_hr = round(hr if hr is not None else 168.0, 1)
     final_peak_hr = round(peak_hr if peak_hr is not None else max(final_hr + 8.0, 174.0), 1)
@@ -597,6 +545,7 @@ def parse_apple_watch_metrics(
     )
 
     return {
+        "sampled_at": sample_time,
         "heart_rate_bpm": final_hr,
         "peak_heart_rate_bpm": final_peak_hr,
         "resting_heart_rate_bpm": final_resting_hr,
@@ -608,5 +557,10 @@ def parse_apple_watch_metrics(
         "fatigue_index": fatigue_index,
         "fatigue_state": final_fatigue,
         "source_format": source_format,
+        "estimated_fields": [name for name, value in {
+            "peak_heart_rate_bpm": peak_hr, "resting_heart_rate_bpm": resting_hr,
+            "hrv_sdnn_ms": hrv_sdnn_ms, "active_calories_kcal": cal,
+            "workout_duration_min": duration_min, "wrist_acceleration_peak_mps": wrist_speed_mps,
+        }.items() if value is None] + ["fatigue_index"],
     }
 

@@ -19,32 +19,72 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import json
 import os
 import tempfile
+from html import escape
+from urllib.parse import urlencode
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
-from db_mongo import (
-    check_mongo_health,
-    create_watch_pairing_session,
-    find_closest_pro_pose,
-    find_training_partner,
-    get_fatigue_biomechanics_analytics,
-    get_latest_watch_telemetry,
-    get_watch_timeseries_window,
-    save_analysis_session,
-    save_live_watch_telemetry,
-    seed_reference_data,
-    update_saint_approval,
-)
-from etl_pose import extract_pose_from_video, parse_apple_watch_metrics
+if __package__:
+    from .auth import install_auth, own, principal, event_visible, authenticate
+    from .telemetry_time import require_recent
+    from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from .db_mongo import (
+        check_mongo_health,
+        create_watch_pairing_session,
+        find_closest_pro_pose,
+        find_training_partner,
+        get_fatigue_biomechanics_analytics,
+        get_latest_watch_telemetry,
+        watch_pairing_owner,
+        get_watch_timeseries_window,
+        save_analysis_session,
+        save_live_watch_telemetry,
+        seed_reference_data,
+        update_saint_approval,
+        get_analysis_session,
+        claim_saint_action,
+    )
+    from .etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
+    from .android_api import create_android_router
+else:
+    from auth import install_auth, own, principal, event_visible, authenticate
+    from telemetry_time import require_recent
+    from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from db_mongo import (
+        check_mongo_health,
+        create_watch_pairing_session,
+        find_closest_pro_pose,
+        find_training_partner,
+        get_fatigue_biomechanics_analytics,
+        get_latest_watch_telemetry,
+        watch_pairing_owner,
+        get_watch_timeseries_window,
+        save_analysis_session,
+        save_live_watch_telemetry,
+        seed_reference_data,
+        update_saint_approval,
+        get_analysis_session,
+        claim_saint_action,
+    )
+    from etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
+    from android_api import create_android_router
+
+
+def parse_apple_watch_metrics(*args, **kwargs):
+    try:
+        return _parse_watch_metrics(*args, **kwargs)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 # Connected Android SSE event queues for zero-latency push when Apple Watch or Saint approval updates
 _SSE_SUBSCRIBERS: List[asyncio.Queue] = []
@@ -77,10 +117,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+install_auth(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -89,7 +131,7 @@ app.add_middleware(
 class ApproveSaintActionRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="Session ID returned by /pipeline/analyze-badminton")
     user_name: str = Field(default="user_1", description="Approving player's name")
-    approved: bool = Field(default=True, description="Whether user_1 approves the external Saint action")
+    approved: bool = Field(..., description="Whether user_1 approves the external Saint action")
     notes: Optional[str] = Field(default=None, description="Optional note from the user")
     saint_agent_job: Optional[Dict[str, Any]] = Field(default=None, description="Optional override of staged Saint job")
 
@@ -100,15 +142,22 @@ class PairWatchRequest(BaseModel):
 
 
 @app.get("/health")
-def health_check() -> Dict[str, Any]:
+def health_check(request: Request) -> Dict[str, Any]:
     """
     Health check + MongoDB Atlas status & enabled features.
     """
+    if not getattr(request.state, 'identity', None) or request.state.identity['role'] != 'admin':
+        return {'status': 'ready', 'service': 'tempo'}
     mongo_status = check_mongo_health()
+    pose_runtime = get_pose_runtime_status()
     return {
-        "status": "ok",
+        "status": "ok" if mongo_status.get("connected") and pose_runtime["configured"] else "degraded",
         "service": "tempo-biomechanics-backend",
-        "gemini_model": "gemini-4-argon",
+        "gemini_model": os.environ.get("GEMINI_MODEL", "gemini-4-argon"),
+        "demo_mode": os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true",
+        "realtime_transport": "process_local_sse",
+        "healthkit_bridge": "manual_or_export_upload",
+        "pose_runtime": pose_runtime,
         "mongodb": mongo_status,
     }
 
@@ -120,25 +169,28 @@ def pair_apple_watch_for_android(req: PairWatchRequest, request: Request) -> Dic
     Returns a 6-character pairing code (`TMPO-xx`) and a Companion URL (`http://<host>:8000/watch-companion?code=TMPO-xx`)
     that Sumanth can scan or tap on his iPhone/Watch to stream real biometrics through MongoDB to the Android app.
     """
+    own(request, req.user_name)
     session = create_watch_pairing_session(
         user_name=req.user_name,
         android_device_id=req.android_device_id,
     )
-    host = request.headers.get("host", "192.168.68.106:8000")
-    companion_url = f"http://{host}/watch-companion?code={session['pairing_code']}&user={req.user_name}"
+    base_url = os.environ.get("TEMPO_PUBLIC_BASE_URL", str(request.base_url)).rstrip("/")
+    companion_url = f"{base_url}/watch-companion?" + urlencode({"code": session["pairing_code"], "user": req.user_name})
     session["companion_url"] = companion_url
-    session["shortcut_webhook_url"] = f"http://{host}/pipeline/etl-apple-watch"
+    session["shortcut_webhook_url"] = f"{base_url}/pipeline/etl-apple-watch"
     return session
 
 
 @app.post("/pipeline/analyze-badminton")
 @app.post("/pipeline/analyze-stroke")
 async def analyze_badminton_pipeline(
+    request: Request,
     video: Optional[UploadFile] = File(default=None),
     apple_watch_file: Optional[UploadFile] = File(default=None),
     user_name: str = Form(default="user_1"),
-    heart_rate_bpm: float = Form(default=168.0),
-    active_calories_kcal: float = Form(default=420.0),
+    heart_rate_bpm: Optional[float] = Form(default=None),
+    sampled_at: Optional[str] = Form(default=None),
+    active_calories_kcal: Optional[float] = Form(default=None),
     fatigue_state: Optional[str] = Form(default=None),
     apple_watch_payload: Optional[str] = Form(default=None),
     user_lon: float = Form(default=-0.1328),
@@ -151,8 +203,7 @@ async def analyze_badminton_pipeline(
     Runs `etl_pose -> db_mongo ($vectorSearch + 2dsphere $geoNear) -> agent_argon_saint`,
     saves the session to MongoDB, and returns the unified JSON for the Android Jetpack Compose frontend.
     """
-    seed_reference_data()
-
+    own(request, user_name)
     temp_video_path: Optional[str] = None
     video_filename = "synthetic_test_clip.mp4"
 
@@ -173,23 +224,45 @@ async def analyze_badminton_pipeline(
                 watch_raw_payload = watch_bytes
 
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
-        pose_result = extract_pose_from_video(temp_video_path or "")
+        pose_result = await run_in_threadpool(extract_pose_from_video, temp_video_path or "")
+        demo_mode = os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true"
+        if pose_result["used_fallback"] and not demo_mode:
+            unavailable = pose_result["status"] in {
+                "pose_model_missing", "mediapipe_tasks_unavailable", "opencv_unavailable", "pose_inference_failed"}
+            raise HTTPException(status_code=503 if unavailable else 422, detail={
+                "message": ("Pose engine unavailable. Check /health and run setup_pose_model.py."
+                            if unavailable else "No reliable single-player overhead pose detected. Upload a full-body right-handed overhead video."),
+                "pose_status": pose_result["status"],
+            })
         live_cached = get_latest_watch_telemetry(user_name)
         if (
             watch_raw_payload is None
             and live_cached is not None
-            and heart_rate_bpm == 168.0
-            and active_calories_kcal == 420.0
+            and heart_rate_bpm is None
+            and active_calories_kcal is None
+            and fatigue_state is None
         ):
+            try:
+                require_recent(live_cached.get('sampled_at'))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             watch_metrics = parse_apple_watch_metrics(payload=live_cached)
             watch_metrics["source_format"] = "live_apple_watch_sync"
+            watch_metrics["received_at"] = live_cached["updated_at"]
+            watch_metrics["user_id"] = user_name
         else:
             watch_metrics = parse_apple_watch_metrics(
                 payload=watch_raw_payload,
-                heart_rate_bpm=heart_rate_bpm,
+                sampled_at=sampled_at,
+                heart_rate_bpm=heart_rate_bpm if heart_rate_bpm is not None else (168.0 if demo_mode else None),
                 active_calories_kcal=active_calories_kcal,
                 fatigue_state=fatigue_state,
             )
+            if not demo_mode:
+                try:
+                    require_recent(watch_metrics.get('sampled_at'))
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
             save_live_watch_telemetry(user_name, watch_metrics)
 
         # Step 2: MongoDB Atlas $vectorSearch Pro Matching & 2dsphere Geospatial Partner Discovery (Taha)
@@ -203,7 +276,7 @@ async def analyze_badminton_pipeline(
         )
 
         # Step 3: Gemini 4 Argon Verification + Saint AI Autonomous Coach (Kong/Sumanth)
-        agent_output = run_argon_and_saint_agent(
+        agent_output = await run_in_threadpool(run_argon_and_saint_agent,
             user_name=user_name,
             pose_data=pose_result["raw_angles"],
             watch_metrics=watch_metrics,
@@ -211,18 +284,26 @@ async def analyze_badminton_pipeline(
             partner_match=partner_match,
         )
 
+        if os.environ.get('TEMPO_REQUIRE_LIVE_MODEL', 'false').lower() == 'true' and agent_output.get('model_status') != 'live':
+            raise HTTPException(503, 'Live coaching model unavailable; consult the runtime validation report')
         # Step 4: MongoDB Time-Series Window & Longitudinal Analytics Snapshot
         ts_window = get_watch_timeseries_window(user_name=user_name, limit=6)
         fatigue_analytics = get_fatigue_biomechanics_analytics(user_name=user_name)
 
         unified_payload: Dict[str, Any] = {
             "user_name": user_name,
+            "demo_mode": demo_mode,
+            "coaching_model": agent_output["model"],
+            "coaching_status": agent_output.get("model_status", "unknown"),
+            "coaching_error_type": agent_output.get("model_error_type"),
+            "analysis_limitations": ["Peak reach is a contact proxy, not detected impact", "165 degrees is a project heuristic, not a validated sports score", "Reference profiles are illustrative and unvalidated"],
             "video_filename": video_filename,
             "verification_status": agent_output["verification_status"],
             "biomechanical_diagnosis": agent_output["biomechanical_diagnosis"],
             "live_drill_prescription": agent_output["live_drill_prescription"],
             "saint_agent_job": agent_output["saint_agent_job"],
             "pose_analysis": {
+                **pose_result,
                 "status": pose_result["status"],
                 "used_fallback": pose_result["used_fallback"],
                 "frames_scanned": pose_result["frames_scanned"],
@@ -233,6 +314,7 @@ async def analyze_badminton_pipeline(
             "apple_watch_biometrics": watch_metrics,
             "watch_timeseries_window": ts_window,
             "pro_comparison": {
+                "validation_status": pro_match.get("validation_status", "illustrative_unvalidated"),
                 "matched_pro": pro_match.get("player_name"),
                 "country": pro_match.get("country"),
                 "sport": pro_match.get("sport", "Tennis"),
@@ -272,6 +354,7 @@ async def etl_apple_watch_endpoint(
     user_name: Optional[str] = Form(default=None),
     pairing_code: Optional[str] = Form(default=None),
     heart_rate_bpm: Optional[float] = Form(default=None),
+    sampled_at: Optional[str] = Form(default=None),
     active_calories_kcal: Optional[float] = Form(default=None),
     fatigue_state: Optional[str] = Form(default=None),
 ) -> Dict[str, Any]:
@@ -307,7 +390,20 @@ async def etl_apple_watch_endpoint(
         if raw_payload.get("pairing_code"):
             resolved_code = str(raw_payload["pairing_code"])
 
-    saved = save_live_watch_telemetry(resolved_user, metrics, pairing_code=resolved_code)
+    try:
+        resolved_user = watch_pairing_owner(resolved_code) if resolved_code else resolved_user
+        own(request, resolved_user)
+        if sampled_at and not metrics.get('sampled_at'):
+            metrics = parse_apple_watch_metrics(payload=raw_payload, heart_rate_bpm=heart_rate_bpm,
+                active_calories_kcal=active_calories_kcal, fatigue_state=fatigue_state, sampled_at=sampled_at)
+        try:
+            require_recent(metrics.get('sampled_at'))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        saved = save_live_watch_telemetry(resolved_user, metrics, pairing_code=resolved_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    resolved_user = saved["user_name"]
     ts_window = get_watch_timeseries_window(user_name=resolved_user, limit=8)
 
     _broadcast_sse_event(
@@ -327,34 +423,43 @@ async def etl_apple_watch_endpoint(
 
 
 @app.get("/pipeline/latest-apple-watch")
-def get_latest_apple_watch_endpoint(user_name: Optional[str] = None) -> Dict[str, Any]:
+def get_latest_apple_watch_endpoint(request: Request, user_name: Optional[str] = None) -> Dict[str, Any]:
     """Return the most recently synced live Apple Watch biometrics + rolling Time-Series window."""
-    target_user = user_name or "user_1"
+    target_user = user_name or principal(request)["user_id"]
+    own(request, target_user)
     latest = get_latest_watch_telemetry(target_user)
+    try:
+        require_recent(latest.get('sampled_at') if latest else None)
+        sample_is_fresh = True
+    except ValueError:
+        sample_is_fresh = False
     ts_window = get_watch_timeseries_window(user_name=target_user, limit=10)
     return {
         "status": "ok",
-        "has_live_telemetry": latest is not None,
+        "has_live_telemetry": latest is not None and sample_is_fresh,
+        "sample_is_fresh": sample_is_fresh,
         "apple_watch_biometrics": latest,
         "watch_timeseries_window": ts_window,
     }
 
 
 @app.get("/pipeline/watch-timeseries/{user_name}")
-def watch_timeseries_endpoint(user_name: str = "user_1", limit: int = 15) -> Dict[str, Any]:
+def watch_timeseries_endpoint(request: Request, user_name: str = "user_1", limit: int = Query(default=15, ge=1, le=1000)) -> Dict[str, Any]:
     """
     MongoDB Time-Series (`watch_telemetry_ts`) + `$setWindowFields` rolling moving-average endpoint
     for the Android Jetpack Compose real-time HR & Fatigue graph.
     """
+    own(request, user_name)
     return get_watch_timeseries_window(user_name=user_name, limit=limit)
 
 
 @app.get("/pipeline/analytics/{user_name}")
-def player_fatigue_analytics_endpoint(user_name: str = "user_1") -> Dict[str, Any]:
+def player_fatigue_analytics_endpoint(request: Request, user_name: str = "user_1") -> Dict[str, Any]:
     """
     MongoDB `$facet` + `$bucket` longitudinal correlation endpoint showing how `user_1`'s
     overhead elbow extension (`right_elbow_contact_deg`) degrades across Apple Watch Heart-Rate Zones.
     """
+    own(request, user_name)
     return get_fatigue_biomechanics_analytics(user_name=user_name)
 
 
@@ -365,18 +470,26 @@ async def android_live_sse_stream(request: Request) -> StreamingResponse:
     Streams real-time `APPLE_WATCH_TELEMETRY_SYNC`, `STROKE_ANALYSIS_COMPLETED`,
     and `SAINT_ACTION_APPROVED` events the instant they hit MongoDB Atlas!
     """
-    queue: asyncio.Queue = asyncio.Queue()
+    identity = principal(request)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     _SSE_SUBSCRIBERS.append(queue)
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        identity = principal(request)
         try:
-            latest = get_latest_watch_telemetry("user_1")
+            latest = get_latest_watch_telemetry(identity["user_id"])
             yield f"data: {json.dumps({'event': 'CONNECTED', 'latest_watch': latest})}\n\n"
             while True:
+                try:
+                    identity = authenticate(request.headers, request.cookies)
+                except HTTPException:
+                    break
                 if await request.is_disconnected():
                     break
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    if not event_visible(identity, msg):
+                        continue
                     yield f"data: {json.dumps(msg)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
@@ -403,7 +516,7 @@ async def approve_saint_action(
     content_type = request.headers.get("content-type", "").lower()
     req_session_id = session_id
     req_user_name = user_name or "user_1"
-    req_approved = True if approved is None else bool(approved)
+    req_approved = approved
     req_notes = notes
     custom_job: Optional[Dict[str, Any]] = None
 
@@ -419,43 +532,41 @@ async def approve_saint_action(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid JSON payload: {exc}") from exc
 
-    job_to_execute = custom_job or {
-        "plain_english_instruction": (
-            f"Confirmed by {req_user_name}: Book Court 3 at Islington Tennis & Racket Centre / Finsbury Leisure (EC1V) "
-            "and notify London training partner Arjun Mehta."
-        ),
-        "requires_human_approval": False,
-        "approved_by": req_user_name,
-    }
-
+    own(request, req_user_name)
+    if not req_session_id or req_approved is None:
+        raise HTTPException(status_code=422, detail="session_id and approved are required")
+    if custom_job is not None:
+        raise HTTPException(status_code=400, detail="Approve the saved proposal; job overrides are not supported")
+    try:
+        saved = get_analysis_session(req_session_id)
+        if saved is None:
+            raise HTTPException(status_code=404, detail="Unknown analysis session")
+        if saved.get("user_name") != req_user_name:
+            raise HTTPException(status_code=403, detail="Session belongs to another player")
+        if not claim_saint_action(req_session_id, req_user_name):
+            raise HTTPException(status_code=409, detail="Session already processed or being processed")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Approval storage unavailable") from exc
+    job_to_execute = dict(saved["saint_agent_job"])
+    job_to_execute.update(requires_human_approval=False, approved_by=req_user_name)
     if req_approved:
-        dispatch_result = dispatch_saint_webhook(
+        dispatch_result = await run_in_threadpool(dispatch_saint_webhook,
             saint_agent_job=job_to_execute,
             event_type="SAINT_JOB_HUMAN_APPROVED_EXECUTE",
-            extra_metadata={
-                "session_id": req_session_id,
-                "approved_by": req_user_name,
-                "notes": req_notes or "",
-            },
+            extra_metadata={"session_id": req_session_id, "approved_by": req_user_name,
+                            "notes": req_notes or "", "idempotency_key": req_session_id},
         )
-        booking_confirmation = {
-            "court_booking_status": "CONFIRMED",
-            "venue": "Islington Tennis & Racket Centre / Finsbury Leisure (EC1V)",
-            "court": "Court 3",
-            "slot": "Tonight 20:00 - 22:00 BST",
-            "partner_notified": "Arjun Mehta",
-            "webhook_dispatch": dispatch_result,
-        }
     else:
-        dispatch_result = {
-            "webhook_configured": bool(os.environ.get("SAINT_WEBHOOK_URL")),
-            "dispatched": False,
-            "event_type": "SAINT_JOB_HUMAN_REJECTED",
-        }
-        booking_confirmation = {
-            "court_booking_status": "CANCELLED_BY_USER",
-            "webhook_dispatch": dispatch_result,
-        }
+        dispatch_result = {"webhook_configured": bool(os.environ.get("SAINT_WEBHOOK_URL")),
+                           "dispatched": False, "event_type": "SAINT_JOB_HUMAN_REJECTED"}
+    booking_confirmation = {
+        "court_booking_status": ("DISPATCHED_AWAITING_CONFIRMATION" if dispatch_result.get("dispatched")
+                                 else "NOT_EXECUTED") if req_approved else "CANCELLED_BY_USER",
+        "venue": job_to_execute.get("venue"), "slot": job_to_execute.get("proposed_slot"),
+        "webhook_dispatch": dispatch_result,
+    }
 
     updated_session = update_saint_approval(
         session_id=req_session_id,
@@ -473,16 +584,24 @@ async def approve_saint_action(
         "saint_approval_status": updated_session.get("saint_approval_status"),
         "execution_summary": booking_confirmation,
     }
-    _broadcast_sse_event("SAINT_ACTION_APPROVED", response_payload)
+    _broadcast_sse_event("SAINT_ACTION_APPROVED" if req_approved else "SAINT_ACTION_REJECTED", response_payload)
     return response_payload
 
 
 @app.get("/watch-companion", response_class=HTMLResponse)
-def apple_watch_companion_web_bridge(code: str = "TMPO-88", user: str = "user_1") -> str:
+def apple_watch_companion_web_bridge(request: Request, code: str = "TMPO-88", user: str = "user_1") -> str:
     """
     Zero-config Apple Watch / iPhone Web Companion page that links directly to the Android app
     via MongoDB Atlas Time-Series (`watch_telemetry_ts`).
     """
+    own(request, user)
+    try:
+        own(request, watch_pairing_owner(code))
+    except ValueError:
+        raise HTTPException(404, 'Unknown pairing code')
+    code = escape(code, quote=True)
+    user = escape(user, quote=True)
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -520,7 +639,7 @@ def apple_watch_companion_web_bridge(code: str = "TMPO-88", user: str = "user_1"
   <div class="container">
     <span class="badge">PAIRED WITH ANDROID • {code}</span>
     <h1>Tempo Apple Watch Bridge</h1>
-    <p class="sub">Streams live Heart Rate, HRV & Calories into MongoDB Atlas Time-Series (<code>watch_telemetry_ts</code>) &rarr; Android Jetpack Compose App.</p>
+    <p class="sub">Manual telemetry simulator and Apple Health export uploader. Native HealthKit integration is required for live watch sensors. Sends data into MongoDB Time-Series (<code>watch_telemetry_ts</code>) &rarr; Android Jetpack Compose App.</p>
 
     <div class="card">
       <div class="row">
@@ -542,7 +661,7 @@ def apple_watch_companion_web_bridge(code: str = "TMPO-88", user: str = "user_1"
         </div>
       </div>
 
-      <label style="font-size:12px;color:var(--muted);">Live Watch Heart Rate Sensor (BPM)</label>
+      <label style="font-size:12px;color:var(--muted);">Demo Heart Rate Input (BPM)</label>
       <input type="range" id="hrSlider" min="110" max="195" value="174" oninput="updateSliders()" />
 
       <label style="font-size:12px;color:var(--muted);">HRV SDNN Recovery (ms)</label>
@@ -730,21 +849,19 @@ def live_laptop_dashboard() -> str:
         document.getElementById('fatigueState').innerText = biometrics.fatigue_state || '--';
         document.getElementById('fatigueIdx').innerText = 'Fatigue Index: ' + (biometrics.fatigue_index || '--') + ' / 100';
         document.getElementById('sourceFormat').innerText = 'Source: ' + (biometrics.source_format || 'apple_watch');
-        document.getElementById('syncTime').innerText = 'Last synced: ' + (biometrics.updated_at || new Date().toISOString());
+        document.getElementById('syncTime').innerText = 'Sample taken: ' + (biometrics.sampled_at || 'unknown') + ' | Received: ' + (biometrics.updated_at || 'unknown');
       }
       if (windowData && windowData.samples) {
         const tbody = document.getElementById('tsTable');
-        tbody.innerHTML = windowData.samples.map(s => `
-          <tr>
-            <td>${s.timestamp}</td>
-            <td>${(s.metadata && s.metadata.user_name) || 'user_1'}</td>
-            <td style="color:#ccff00;font-weight:700;">${s.heart_rate_bpm} BPM</td>
-            <td>${Number(s.rolling_avg_hr_bpm || s.heart_rate_bpm).toFixed(1)} BPM</td>
-            <td>${s.hrv_sdnn_ms} ms</td>
-            <td>${s.active_calories_kcal} kcal</td>
-            <td>${s.fatigue_index}</td>
-          </tr>
-        `).join('');
+        tbody.replaceChildren();
+        windowData.samples.forEach(s => {
+          const row = document.createElement('tr');
+          const values = [s.timestamp, (s.metadata && s.metadata.user_name) || '',
+            s.heart_rate_bpm, Number(s.rolling_avg_hr_bpm || s.heart_rate_bpm).toFixed(1),
+            s.hrv_sdnn_ms, s.active_calories_kcal, s.fatigue_index];
+          values.forEach(value => { const cell = document.createElement('td'); cell.textContent = String(value ?? ''); row.appendChild(cell); });
+          tbody.appendChild(row);
+        });
       }
     }
 
@@ -1340,6 +1457,9 @@ def pitch_deck_architecture_diagram() -> str:
   </div>
 </body>
 </html>"""
+
+
+app.include_router(create_android_router(analyze_badminton_pipeline, _broadcast_sse_event))
 
 
 if __name__ == "__main__":

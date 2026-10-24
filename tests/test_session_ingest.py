@@ -293,15 +293,17 @@ async def test_background_task_processing_stub(mock_db: MockAsyncDatabase):
     assert len(updated_session["active_widgets"]) >= 2
 
 
-@pytest.mark.asyncio
-async def test_health_check_endpoint(async_client: AsyncClient):
-    """
-    Test 10: Validates GET /health endpoint returns service metadata and DB status.
-    """
-    response = await async_client.get("/health")
+def test_health_check_endpoint():
+    """Health belongs to the shared runtime and reports a degraded offline state."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from backend.main import app
+    from backend.test_auth_helpers import auth_headers
+    with patch('backend.main.check_mongo_health', return_value={'connected': False}), \
+         patch('backend.main.get_pose_runtime_status', return_value={'configured': False}):
+        response = TestClient(app, headers=auth_headers()).get('/health')
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "healthy"
-    assert data["service"] == "tempo-session-ingestion-api"
-    assert "mongodb_connected" in data
-
+    assert data['status'] == 'degraded'
+    assert data['service'] == 'tempo-biomechanics-backend'
+    assert data['mongodb']['connected'] is False

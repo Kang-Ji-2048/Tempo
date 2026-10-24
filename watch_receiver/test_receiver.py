@@ -14,19 +14,25 @@ class ReceiverTests(unittest.TestCase):
         self.addCleanup(self.keys.stop)
         self.client = TestClient(server.app)
 
+    def test_sensor_sample_time_is_required_and_cannot_be_refreshed_by_receipt(self):
+        self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': 140, 'access_key': self.write}).status_code, 422)
+        for time in (datetime.now(timezone.utc)-timedelta(minutes=10), datetime.now(timezone.utc)+timedelta(minutes=10)):
+            self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': 140,
+                'sampled_at': time.isoformat(), 'access_key': self.write}).status_code, 422)
+
     def test_ready(self):
         self.assertEqual(self.client.get('/health').json(), {'status': 'ready'})
 
     def test_unconfigured_is_fail_closed(self):
         with patch.object(server, 'READ_KEY', self.write):
-            for response in (self.client.get('/health'), self.client.get('/reading'), self.client.post('/watch', json={})):
+            for response in (self.client.get('/health'), self.client.get('/reading'), self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), })):
                 self.assertEqual(response.status_code, 503)
 
     def test_no_readings_initially(self):
         self.assertIsNone(self.client.get('/reading', headers={'Authorization': 'Bearer ' + self.read}).json()['reading'])
 
     def test_write_and_read_roundtrip(self):
-        response = self.client.post('/watch', json={'heart_rate_bpm': 140, 'access_key': self.write})
+        response = self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': 140, 'access_key': self.write})
         self.assertEqual(response.status_code, 200)
         latest = self.client.get('/reading', headers={'Authorization': 'Bearer ' + self.read}).json()['reading']
         self.assertEqual(latest['heart_rate_bpm'], 140)
@@ -37,18 +43,18 @@ class ReceiverTests(unittest.TestCase):
         self.assertEqual(self.client.get('/reading', headers={'Authorization': 'Bearer ' + self.write}).status_code, 401)
 
     def test_read_key_cannot_write(self):
-        self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': 140, 'access_key': self.read}).status_code, 401)
+        self.assertEqual(self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': 140, 'access_key': self.read}).status_code, 401)
 
     def test_authentication_required(self):
         self.assertEqual(self.client.get('/reading').status_code, 401)
-        self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': 140}).status_code, 401)
+        self.assertEqual(self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': 140}).status_code, 401)
 
     def test_unicode_key_is_rejected(self):
-        self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': 140, 'access_key': '\u2603'}).status_code, 401)
+        self.assertEqual(self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': 140, 'access_key': '\u2603'}).status_code, 401)
 
     def test_invalid_readings_rejected(self):
         for hr in (-1, 251, 'nan', 'infinity', '120 bpm'):
-            self.assertEqual(self.client.post('/watch', json={'heart_rate_bpm': hr, 'access_key': self.write}).status_code, 422)
+            self.assertEqual(self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': hr, 'access_key': self.write}).status_code, 422)
 
     def test_large_request_rejected(self):
         self.assertEqual(self.client.post('/watch', content='x' * 4097).status_code, 413)
@@ -59,7 +65,7 @@ class ReceiverTests(unittest.TestCase):
 
     def test_only_latest_reading_is_exposed(self):
         for hr in (120, 140):
-            self.client.post('/watch', json={'heart_rate_bpm': hr, 'access_key': self.write})
+            self.client.post('/watch', json={'sampled_at': datetime.now(timezone.utc).isoformat(), 'heart_rate_bpm': hr, 'access_key': self.write})
         reading = self.client.get('/reading', headers={'Authorization': 'Bearer ' + self.read}).json()['reading']
         self.assertEqual(reading['heart_rate_bpm'], 140)
 

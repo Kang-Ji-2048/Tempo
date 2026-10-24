@@ -17,7 +17,21 @@ import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
-class CaptureViewModel @Inject constructor() : ViewModel() {
+class CaptureViewModel @Inject constructor(
+    private val identity: com.tempo.app.data.PlayerIdentity
+) : ViewModel() {
+    private val _accessToken = MutableStateFlow("")
+    val accessToken: StateFlow<String> = _accessToken.asStateFlow()
+    fun setAccessToken(value: String) {
+        _accessToken.value = value
+        identity.accessToken = value
+    }
+    private val _playerId = MutableStateFlow(identity.playerId)
+    val playerId: StateFlow<String> = _playerId.asStateFlow()
+    fun setPlayerId(value: String) {
+        _playerId.value = value.take(128)
+        if (value.isNotBlank()) identity.playerId = value.take(128)
+    }
 
     private var activePrompt = DEFAULT_PROMPT
     private var targetFps = 30

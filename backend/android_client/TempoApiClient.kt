@@ -179,7 +179,7 @@ class TempoRepository(private val baseUrl: String = "http://192.168.68.106:8000"
         .build()
 
     val api: TempoBackendService = Retrofit.Builder()
-        .baseUrl(baseUrl)
+        .baseUrl(baseUrl.trimEnd('/') + "/")
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create())
         .build()

@@ -1,0 +1,7 @@
+-r backend/requirements-dev.txt
+# Historical service modules are exercised only by component tests.
+motor
+aiofiles
+pydantic-settings
+pytest
+pytest-asyncio

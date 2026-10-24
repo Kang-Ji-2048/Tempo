@@ -27,4 +27,6 @@ interface SessionDao {
 
     @Query("UPDATE sessions SET status = :status, updatedAt = :updatedAt WHERE sessionId = :sessionId")
     suspend fun updateStatus(sessionId: String, status: String, updatedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE sessions SET status = 'UPLOAD_FAILED', errorMessage = :message, updatedAt = :updatedAt WHERE sessionId = :sessionId")
+    suspend fun markFailed(sessionId: String, message: String, updatedAt: Long = System.currentTimeMillis())
 }
