@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(showUnauthorized) {
                     if (showUnauthorized) {
                         authBannerNotifier.dismiss()
-                        playerIdentity.clear()
+                        authRepository.clearLocalState()
                         sessionExpiredMessage = "Session expired. Please sign in again."
                         navController.navigate(Screen.Login.route) {
                             popUpTo(0) { inclusive = true }

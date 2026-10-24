@@ -232,6 +232,83 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
             "22x Grand Slam champion known for unmatched core torque and high-margin overhead smash stability "
             "(169.5 deg contact extension with heavy wrist snap)."
         ),
+    },    {
+        "reference_id": "pro_viktor_axelsen_overhead_clear",
+        "player_name": "Viktor Axelsen",
+        "country": "DEN",
+        "sport": "badminton",
+        "stroke_type": "Full-Reach Overhead Clear",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 176.0,
+        "right_shoulder_abduction_deg": 168.0,
+        "trunk_arch_deg": 164.0,
+        "right_knee_flexion_deg": 148.0,
+        "left_arm_balance_deg": 142.0,
+        "contact_height_norm": 0.96,
+        "pose_vector": [
+            round(176.0 / 180.0, 4),
+            round(168.0 / 180.0, 4),
+            round(164.0 / 180.0, 4),
+            round(148.0 / 180.0, 4),
+            round(142.0 / 180.0, 4),
+            0.96,
+        ],
+        "biomechanical_notes": (
+            "Two-time Olympic champion whose 1.94 m frame delivers near-full 176 deg elbow extension at contact, "
+            "a tall rear-court contact point and a stable non-racket-arm counterbalance for deep, flat clears."
+        ),
+    },
+    {
+        "reference_id": "pro_an_se_young_overhead_clear",
+        "player_name": "An Se-young",
+        "country": "KOR",
+        "sport": "badminton",
+        "stroke_type": "Defensive-to-Attack Overhead Clear",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 172.0,
+        "right_shoulder_abduction_deg": 164.0,
+        "trunk_arch_deg": 161.0,
+        "right_knee_flexion_deg": 142.0,
+        "left_arm_balance_deg": 138.0,
+        "contact_height_norm": 0.93,
+        "pose_vector": [
+            round(172.0 / 180.0, 4),
+            round(164.0 / 180.0, 4),
+            round(161.0 / 180.0, 4),
+            round(142.0 / 180.0, 4),
+            round(138.0 / 180.0, 4),
+            0.93,
+        ],
+        "biomechanical_notes": (
+            "Olympic and world champion with elite rear-court recovery: compact kinetic chain, deep knee load (142 deg) "
+            "and early shoulder rotation that turns defensive clears into attacking length."
+        ),
+    },
+    {
+        "reference_id": "pro_lee_zii_jia_jump_smash",
+        "player_name": "Lee Zii Jia",
+        "country": "MAS",
+        "sport": "badminton",
+        "stroke_type": "Explosive Jump Smash",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 174.0,
+        "right_shoulder_abduction_deg": 170.0,
+        "trunk_arch_deg": 158.0,
+        "right_knee_flexion_deg": 132.0,
+        "left_arm_balance_deg": 140.0,
+        "contact_height_norm": 0.98,
+        "pose_vector": [
+            round(174.0 / 180.0, 4),
+            round(170.0 / 180.0, 4),
+            round(158.0 / 180.0, 4),
+            round(132.0 / 180.0, 4),
+            round(140.0 / 180.0, 4),
+            0.98,
+        ],
+        "biomechanical_notes": (
+            "Explosive jumper whose airborne contact sits at the highest normalized point of the set (0.98), "
+            "pairing a pronounced trunk arch with a deep 132 deg take-off knee bend for steep smash angles."
+        ),
     },
 ]
 

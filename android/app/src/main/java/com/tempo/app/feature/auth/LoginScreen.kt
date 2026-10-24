@@ -228,6 +228,21 @@ fun LoginScreen(
             Text(text = "Sign up", color = AccentNeonVolt, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Reset / Logout",
+            color = TextMuted,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.clickable {
+                viewModel.resetLocalState {
+                    navController.navigate(Screen.Register.route) {
+                        popUpTo(Screen.Login.route) { inclusive = false }
+                    }
+                }
+            }
+        )
+
         Spacer(modifier = Modifier.height(32.dp))
     }
 }

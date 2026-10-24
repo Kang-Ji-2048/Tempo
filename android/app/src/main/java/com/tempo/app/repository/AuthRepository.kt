@@ -18,6 +18,8 @@ interface AuthRepository {
     suspend fun login(email: String, password: String): NetworkResult<AuthResponseDto>
     suspend fun getMe(): NetworkResult<UserProfileDto>
     suspend fun logout(): NetworkResult<Unit>
+    /** Wipes identity prefs, cached config and all Room rows so the app starts fresh. */
+    suspend fun clearLocalState()
     fun isLoggedIn(): Boolean
 }
 
@@ -86,17 +88,18 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun logout(): NetworkResult<Unit> {
-        return try {
-            try {
-                tempoApi.logout()
-            } catch (_: Exception) {}
-            identity.clear()
+        try {
+            tempoApi.logout()
+        } catch (_: Exception) {}
+        clearLocalState()
+        return NetworkResult.Success(Unit)
+    }
+
+    override suspend fun clearLocalState() {
+        identity.clear()
+        try {
             userProfileDao.clearAllProfiles()
             sessionDao.clearAll()
-            NetworkResult.Success(Unit)
-        } catch (e: Exception) {
-            identity.clear()
-            NetworkResult.Success(Unit)
-        }
+        } catch (_: Exception) {}
     }
 }

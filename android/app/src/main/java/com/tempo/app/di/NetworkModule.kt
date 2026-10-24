@@ -2,7 +2,6 @@ package com.tempo.app.di
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.tempo.app.BuildConfig
-import com.tempo.app.network.MockTempoApi
 import com.tempo.app.network.TempoApi
 import com.tempo.app.repository.SessionRepository
 import com.tempo.app.repository.SessionRepositoryImpl
@@ -80,19 +79,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideTempoApi(
-        retrofit: Retrofit,
-        mockApi: MockTempoApi,
-        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context
-    ): TempoApi {
-        val prefs = context.getSharedPreferences("tempo_config", android.content.Context.MODE_PRIVATE)
-        val useMock = prefs.getBoolean("use_mock_api", BuildConfig.USE_MOCK_API)
-        return if (useMock) {
-            mockApi
-        } else {
-            retrofit.create(TempoApi::class.java)
-        }
-    }
+    fun provideTempoApi(retrofit: Retrofit): TempoApi = retrofit.create(TempoApi::class.java)
 }
 
 @Module

@@ -48,6 +48,14 @@ class AuthViewModel @Inject constructor(
         _uiState.update { it.copy(isPasswordVisible = !it.isPasswordVisible) }
     }
 
+    fun resetLocalState(onReset: () -> Unit) {
+        viewModelScope.launch {
+            authRepository.clearLocalState()
+            _uiState.value = AuthUiState()
+            onReset()
+        }
+    }
+
     fun fillDemoAccount() {
         if (BuildConfig.DEBUG) {
             _uiState.update {

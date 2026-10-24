@@ -39,6 +39,7 @@ interface PlayerIdentity {
 @Singleton
 class SharedPreferencesPlayerIdentity @Inject constructor(@ApplicationContext context: Context) : PlayerIdentity {
     private val preferences = context.getSharedPreferences("tempo_identity", Context.MODE_PRIVATE)
+    private val configPreferences = context.getSharedPreferences("tempo_config", Context.MODE_PRIVATE)
     private fun key(): javax.crypto.SecretKey {
         val store = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey("tempo_api_token", null) as? javax.crypto.SecretKey)?.let { return it }
@@ -112,7 +113,11 @@ class SharedPreferencesPlayerIdentity @Inject constructor(@ApplicationContext co
         }
 
     override fun clear() {
-        preferences.edit().clear().apply()
+        preferences.edit().clear().commit()
+        configPreferences.edit().clear().commit()
+        try {
+            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry("tempo_api_token")
+        } catch (_: Exception) {}
     }
 }
 

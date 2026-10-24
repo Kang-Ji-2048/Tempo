@@ -15,10 +15,10 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
-val localBaseUrl = localProperties.getProperty("BASE_URL", "http://localhost:8000/")
+val localBaseUrl = localProperties.getProperty("BASE_URL", "http://127.0.0.1:8000/")
 val localDebugToken = localProperties.getProperty("TEMPO_DEBUG_TOKEN", "")
 val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "")
-val localUseMockApi = localProperties.getProperty("USE_MOCK_API", "false").toBoolean()
+val localUseMockApi = false
 val localUserId = localProperties.getProperty("TEMPO_USER_ID", "user_1")
 
 android {
@@ -64,8 +64,8 @@ android {
         create("demoOffline") {
             initWith(getByName("debug"))
             matchingFallbacks += listOf("debug")
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000/\"")
-            buildConfigField("Boolean", "USE_MOCK_API", "true")
+            buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "false")
             buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
             buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
             buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
