@@ -164,13 +164,35 @@ class CaptureViewModel @Inject constructor(
         _uiState.value = CaptureUiState.ClipSaved(videoPath, activePrompt)
     }
 
-    companion object {
-        val DEFAULT_PROMPT = CapturePromptWidget(
-            title = "Record 10 overhead clears",
-            instruction = "Film from the side-rear so we can measure full reach and forearm pronation speed.",
+    val sport: String get() = identity.sport ?: "badminton"
+    val skill: String get() = identity.skill ?: "overhead_clear"
+
+    init {
+        val s = identity.sport ?: "badminton"
+        val sk = identity.skill ?: "overhead_clear"
+        val promptTitle = if (s == "tennis") "Record 10 ${sk.replace('_', ' ')}s" else "Record 10 overhead clears"
+        val promptInstruction = if (s == "tennis") {
+            "Film from the baseline so we can measure trunk rotation and racket follow-through."
+        } else {
+            "Film from the side-rear so we can measure full reach and forearm pronation speed."
+        }
+        val prompt = CapturePromptWidget(
+            title = promptTitle,
+            instruction = promptInstruction,
             cameraHint = "Behind-left, 3m back, full body in frame",
             durationS = 15,
-            id = "capture_clear_eval",
+            id = "capture_${s}_${sk}",
+        )
+        setPrompt(prompt)
+    }
+
+    companion object {
+        val DEFAULT_PROMPT = CapturePromptWidget(
+            title = "Record 10 practice reps",
+            instruction = "Film from the side-rear so we can measure joint angles and kinetic chain timing.",
+            cameraHint = "3m back, full body in frame",
+            durationS = 15,
+            id = "capture_generic_eval",
         )
     }
 }

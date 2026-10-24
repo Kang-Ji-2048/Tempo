@@ -73,7 +73,7 @@ fun KeyframeStripView(
                     color = AccentNeonVolt
                 )
                 Text(
-                    text = "Athlete vs. Pro Reference (Axelsen)",
+                    text = "Athlete vs. Pro Reference",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimaryWhite

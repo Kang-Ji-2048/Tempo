@@ -528,4 +528,131 @@ class MockTempoApi @Inject constructor(
             userProfile = userProfile
         )
     }
+
+    override suspend fun register(request: com.tempo.app.network.models.RegisterRequestDto): com.tempo.app.network.models.AuthResponseDto {
+        delay(200)
+        val uid = "user_" + UUID.randomUUID().toString().take(8)
+        identity.userId = uid
+        identity.email = request.email
+        identity.displayName = request.displayName
+        val token = "mock_token_" + UUID.randomUUID().toString()
+        identity.accessToken = token
+        return com.tempo.app.network.models.AuthResponseDto(
+            userId = uid,
+            accessToken = token,
+            displayName = request.displayName
+        )
+    }
+
+    override suspend fun login(request: com.tempo.app.network.models.LoginRequestDto): com.tempo.app.network.models.AuthResponseDto {
+        delay(200)
+        val uid = identity.userId.ifBlank { "user_1" }
+        identity.email = request.email
+        val token = "mock_token_" + UUID.randomUUID().toString()
+        identity.accessToken = token
+        return com.tempo.app.network.models.AuthResponseDto(
+            userId = uid,
+            accessToken = token,
+            displayName = identity.displayName.ifBlank { "Athlete" }
+        )
+    }
+
+    override suspend fun getMe(): com.tempo.app.network.models.UserProfileDto {
+        delay(100)
+        return com.tempo.app.network.models.UserProfileDto(
+            userId = currentUserId,
+            sport = identity.sport ?: "badminton",
+            level = "intermediate",
+            goal = "overhead_power",
+            playstyle = "aggressive",
+            injuries = "none",
+            targetArchetype = "Viktor Axelsen",
+            calibrationCompleted = true
+        )
+    }
+
+    override suspend fun logout(): Map<String, String> {
+        delay(100)
+        identity.clear()
+        return mapOf("status" to "logged_out")
+    }
+
+    override suspend fun getSports(): List<com.tempo.app.network.models.SportDto> {
+        delay(150)
+        return listOf(
+            com.tempo.app.network.models.SportDto(
+                id = "badminton",
+                displayName = "Badminton",
+                iconKey = "badminton_shuttle",
+                analysisReady = true,
+                skills = listOf(
+                    com.tempo.app.network.models.SportSkillDto("overhead_clear", "Overhead Clear", analysisReady = true),
+                    com.tempo.app.network.models.SportSkillDto("jump_smash", "Jump Smash", analysisReady = false)
+                )
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "tennis",
+                displayName = "Tennis",
+                iconKey = "tennis_ball",
+                analysisReady = true,
+                skills = listOf(
+                    com.tempo.app.network.models.SportSkillDto("forehand", "Modern Forehand", analysisReady = true),
+                    com.tempo.app.network.models.SportSkillDto("one_hand_backhand", "One-Handed Backhand", analysisReady = true)
+                )
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "padel",
+                displayName = "Padel",
+                iconKey = "padel_racket",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "pickleball",
+                displayName = "Pickleball",
+                iconKey = "pickleball_paddle",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "squash",
+                displayName = "Squash",
+                iconKey = "squash_ball",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "table_tennis",
+                displayName = "Table Tennis",
+                iconKey = "table_tennis_paddle",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "golf",
+                displayName = "Golf",
+                iconKey = "golf_tee",
+                analysisReady = false
+            )
+        )
+    }
+
+    override suspend fun updateProfile(profile: com.tempo.app.network.models.ProfilePayloadDto): Map<String, String> {
+        delay(150)
+        identity.sport = profile.sport
+        identity.skill = profile.skill
+        return mapOf("status" to "profile_updated", "user_id" to currentUserId)
+    }
+
+    override suspend fun getProfile(): com.tempo.app.network.models.UserProfileDto {
+        return getMe()
+    }
+
+    override suspend fun getAiStatus(): com.tempo.app.network.models.AiStatusDto {
+        delay(100)
+        return com.tempo.app.network.models.AiStatusDto(
+            configured = true,
+            model = "gemini-4-argon",
+            keyMasked = "AQ.A...ciCg",
+            lastCallOk = true,
+            lastLatencyMs = 420,
+            lastCheckedAt = java.time.Instant.now().toString()
+        )
+    }
 }

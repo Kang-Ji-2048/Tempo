@@ -1,6 +1,9 @@
 package com.tempo.app.ui.navigation
 
 sealed class Screen(val route: String) {
+    data object Login : Screen("auth/login")
+    data object Register : Screen("auth/register")
+    data object SportSelection : Screen("sport_selection")
     data object Home : Screen("home")
     data object Onboarding : Screen("onboarding")
     data object Capture : Screen("capture")

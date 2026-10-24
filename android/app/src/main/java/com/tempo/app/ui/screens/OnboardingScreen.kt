@@ -373,8 +373,8 @@ private fun PermissionsAndSummaryView(
                     )
                 }
 
-                val sportName = userProfile?.sport?.replaceFirstChar { it.uppercase() } ?: "Badminton"
-                val archetype = userProfile?.targetArchetype ?: "Viktor Axelsen"
+                val sportName = userProfile?.sport?.replaceFirstChar { it.uppercase() } ?: "Selected Sport"
+                val archetype = userProfile?.targetArchetype?.ifBlank { "Pro Benchmark" } ?: "Pro Benchmark"
                 val playstyle = userProfile?.playstyle?.replaceFirstChar { it.uppercase() } ?: "Aggressive"
                 val level = userProfile?.level?.replaceFirstChar { it.uppercase() } ?: "Intermediate"
                 val goal = userProfile?.goal?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Overhead Power"

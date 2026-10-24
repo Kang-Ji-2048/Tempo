@@ -38,6 +38,7 @@ if __package__:
     from .auth import install_auth, own, principal, event_visible, authenticate
     from .telemetry_time import require_recent
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from . import sports_config, llm_config, user_auth
     from .db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -60,6 +61,7 @@ else:
     from auth import install_auth, own, principal, event_visible, authenticate
     from telemetry_time import require_recent
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    import sports_config, llm_config, user_auth
     from db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -101,6 +103,10 @@ def _broadcast_sse_event(event_type: str, data: Dict[str, Any]) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import logging
+    _log = logging.getLogger("tempo.main")
+    if not llm_config.GEMINI_API_KEY:
+        _log.error("GEMINI_API_KEY missing: AI features will report fallback")
     # Seed Roger Federer, Novak Djokovic, Carlos Alcaraz, Serena Williams, Sinner, Nadal,
     # London GeoJSON training partners, and MongoDB Time-Series collection on startup.
     seed_reference_data()
@@ -118,6 +124,19 @@ app = FastAPI(
 )
 
 install_auth(app)
+app.include_router(user_auth.router)
+
+
+@app.get("/api/v1/sports")
+def get_sports():
+    return sports_config.get_all_sports()
+
+
+@app.get("/api/v1/ai/status")
+def get_ai_status(request: Request):
+    principal(request)
+    return llm_config.AI_STATUS
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -330,6 +349,13 @@ async def analyze_badminton_pipeline(
             "longitudinal_fatigue_analytics": fatigue_analytics,
             "saint_approval_status": "PENDING_HUMAN_APPROVAL",
             "saint_webhook_dispatch": agent_output.get("saint_webhook_dispatch", {}),
+            "llm_source": agent_output.get("llm_source", "gemini" if agent_output.get("model_status") == "live" else "fallback"),
+            "llm_model": agent_output.get("llm_model", agent_output.get("model", "gemini-4-argon")),
+            "llm_error": agent_output.get("llm_error") or agent_output.get("model_error_type"),
+            "video_used": agent_output.get("video_used", False),
+            "latency_ms": agent_output.get("latency_ms", 0),
+            "overall_score": agent_output.get("overall_score", 85 if agent_output.get("verification_status") == "PASS" else 65),
+            "primary_flaw": agent_output.get("primary_flaw", agent_output.get("biomechanical_diagnosis")),
         }
 
         session_id = save_analysis_session(unified_payload)

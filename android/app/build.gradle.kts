@@ -38,7 +38,7 @@ android {
         buildConfigField("Boolean", "USE_MOCK_API", "$localUseMockApi")
         buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"$localDebugToken\"")
         buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
-        buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
+        buildConfigField("String", "TEMPO_USER_ID", "\"\"")
     }
 
     buildTypes {
@@ -52,7 +52,7 @@ android {
             buildConfigField("Boolean", "USE_MOCK_API", "false")
             buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
             buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
-            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"\"")
         }
         debug {
             buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")

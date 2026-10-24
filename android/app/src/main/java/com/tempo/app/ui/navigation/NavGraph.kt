@@ -7,6 +7,9 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.tempo.app.feature.auth.LoginScreen
+import com.tempo.app.feature.auth.RegisterScreen
+import com.tempo.app.feature.sports.SportSelectionScreen
 import com.tempo.app.feature.sdui.debug.SduiDebugScreen
 import com.tempo.app.ui.screens.AnalysisScreen
 import com.tempo.app.ui.screens.CaptureScreen
@@ -26,6 +29,15 @@ fun TempoNavGraph(
         startDestination = startDestination,
         modifier = modifier
     ) {
+        composable(Screen.Login.route) {
+            LoginScreen(navController = navController)
+        }
+        composable(Screen.Register.route) {
+            RegisterScreen(navController = navController)
+        }
+        composable(Screen.SportSelection.route) {
+            SportSelectionScreen(navController = navController)
+        }
         composable(Screen.Home.route) {
             HomeScreen(navController = navController)
         }

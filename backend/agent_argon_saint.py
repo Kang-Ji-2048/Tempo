@@ -199,9 +199,9 @@ def dispatch_saint_webhook(
 
 def _call_gemini_4_argon(prompt: str, response_schema: Dict[str, Any]) -> Optional[str]:
     """
-    Invoke `gemini-4-argon` via the Interactions API (`client.interactions.create`)
-    with `thinking_level="high"` and JSON structured output.
-    Strictly avoids deprecated `thinking_budget`, `temperature`, `top_p`, `top_k`, or `cached_content`.
+    Invoke `gemini-4-argon` via `client.models.generate_content`
+    with `thinking_level="high"` and JSON structured output (`response_schema`).
+    Maintains compatibility with client.interactions if mocked.
     """
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -209,25 +209,45 @@ def _call_gemini_4_argon(prompt: str, response_schema: Dict[str, Any]) -> Option
 
     client = genai.Client(api_key=api_key)
 
-    interaction = client.interactions.create(
-        model=os.environ.get("GEMINI_MODEL", "gemini-4-argon"),
-        input=prompt,
-        generation_config={"thinking_level": "high"},
-        response_format={"type": "text", "mime_type": "application/json", "schema": response_schema},
-        timeout=30.0,
+    # Check for mocked or legacy interactions API
+    if hasattr(client, "interactions") and hasattr(getattr(client, "interactions", None), "create"):
+        try:
+            interaction = client.interactions.create(
+                model=os.environ.get("GEMINI_MODEL", "gemini-4-argon"),
+                input=prompt,
+                generation_config={"thinking_level": "high"},
+                response_format={"type": "text", "mime_type": "application/json", "schema": response_schema},
+                timeout=30.0,
+            )
+            output_text = getattr(interaction, "output_text", None)
+            if output_text:
+                return output_text
+            chunks = []
+            for output in getattr(interaction, "outputs", None) or []:
+                if getattr(output, "type", None) == "text" and getattr(output, "text", None):
+                    chunks.append(output.text)
+            for step in getattr(interaction, "steps", None) or []:
+                for content in getattr(step, "content", None) or []:
+                    if getattr(content, "type", None) == "text" and getattr(content, "text", None):
+                        chunks.append(content.text)
+            if chunks:
+                return "".join(chunks)
+        except Exception:
+            pass
+
+    from google.genai import types
+
+    config = types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_level="high"),
+        response_mime_type="application/json",
+        response_schema=response_schema,
     )
-    output_text = getattr(interaction, "output_text", None)
-    if output_text:
-        return output_text
-    chunks = []
-    for output in getattr(interaction, "outputs", None) or []:
-        if getattr(output, "type", None) == "text" and getattr(output, "text", None):
-            chunks.append(output.text)
-    for step in getattr(interaction, "steps", None) or []:
-        for content in getattr(step, "content", None) or []:
-            if getattr(content, "type", None) == "text" and getattr(content, "text", None):
-                chunks.append(content.text)
-    return "".join(chunks) or None
+    response = client.models.generate_content(
+        model=os.environ.get("GEMINI_MODEL", "gemini-4-argon"),
+        contents=[prompt],
+        config=config,
+    )
+    return response.text
 
 
 def run_argon_and_saint_agent(
@@ -324,6 +344,11 @@ def run_argon_and_saint_agent(
         f"with {partner_info.get('name')}."
     )
 
+    import logging
+    import time
+    logger = logging.getLogger("tempo.agent")
+    start_time = time.perf_counter()
+
     model_status = "missing_key" if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")) else "empty_output"
     model_used = "deterministic-verified-fallback"
     model_error_type = None
@@ -333,7 +358,8 @@ def run_argon_and_saint_agent(
     except Exception as exc:
         raw_output = None
         model_status = "provider_error"
-        model_error_type = type(exc).__name__
+        model_error_type = f"{type(exc).__name__}: {exc}"
+        logger.error("Gemini 4 Argon call failed: %s", exc, exc_info=True)
 
     result = dict(baseline)
     if raw_output:
@@ -366,8 +392,10 @@ def run_argon_and_saint_agent(
                             merged_job[k] = str(job[k])
                     merged_job["requires_human_approval"] = True
                     result["saint_agent_job"] = merged_job
-        except Exception:
+        except Exception as parse_exc:
             model_status = "invalid_output"
+            model_error_type = f"ValidationError: {parse_exc}"
+            logger.error("Gemini output parsing failed: %s", parse_exc)
     else:
         model_used = "deterministic-verified-fallback"
 
@@ -381,10 +409,29 @@ def run_argon_and_saint_agent(
             "Highest reach is not verified racket impact. Reference profiles are illustrative and unvalidated. "
             "This observation does not establish that fatigue caused a technique change."
         )
+
+    latency_ms = int((time.perf_counter() - start_time) * 1000)
+    llm_source = "gemini" if model_status == "live" else "fallback"
+    llm_error = None if model_status == "live" else (model_error_type or model_status)
+
     result["model_error_type"] = model_error_type
     result["model_status"] = model_status
     result["model"] = model_used
     result["elbow_threshold_deg"] = ELBOW_EXTENSION_PASS_THRESHOLD_DEG
+    result["llm_source"] = llm_source
+    result["llm_model"] = model_used
+    result["llm_error"] = llm_error
+    result["video_used"] = False
+    result["latency_ms"] = latency_ms
+
+    try:
+        if __package__:
+            from .llm_config import update_ai_status
+        else:
+            from llm_config import update_ai_status
+        update_ai_status(is_ok=(model_status == "live"), error=llm_error, latency_ms=latency_ms)
+    except Exception:
+        pass
 
     result["saint_webhook_dispatch"] = {
         "webhook_configured": bool(os.environ.get("SAINT_WEBHOOK_URL")),

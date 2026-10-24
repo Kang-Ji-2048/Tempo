@@ -140,7 +140,11 @@ class AnalysisViewModel @Inject constructor(
                                             matchedArchetype = text("matched_archetype"),
                                             audioCue = text("concise_audio_cue"),
                                             voiceNoteScript = text("coach_voice_note_script"),
-                                            voiceNoteUrl = text("voice_note_url")
+                                            voiceNoteUrl = text("voice_note_url"),
+                                            llmSource = record.llmSource ?: (feedback?.get("llm_source") as? JsonPrimitive)?.contentOrNull,
+                                            llmModel = record.llmModel ?: (feedback?.get("llm_model") as? JsonPrimitive)?.contentOrNull,
+                                            llmError = record.llmError ?: (feedback?.get("llm_error") as? JsonPrimitive)?.contentOrNull,
+                                            videoUsed = record.videoUsed ?: (feedback?.get("video_used") as? JsonPrimitive)?.contentOrNull?.toBooleanStrictOrNull()
                                         ),
                                         kineticPhases = phases, widgets = widgetParser.parse(record.activeWidgets.orEmpty()), isPolling = false,
                                         feedbackNotice = when {

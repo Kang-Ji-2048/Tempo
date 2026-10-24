@@ -24,6 +24,7 @@ data class ScheduleUiState(
     val preferredChannel: String = "whatsapp",
     val isActive: Boolean = true,
     val durationMinutes: Int = 45,
+    val recentBrief: String? = null,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
@@ -59,6 +60,7 @@ class ScheduleViewModel @Inject constructor(
                             primingLeadMinutes = dto.primingLeadMinutes,
                             preferredChannel = dto.preferredChannel,
                             isActive = dto.isActive,
+                            recentBrief = dto.recentBrief,
                             isLoading = false
                         )
                     }

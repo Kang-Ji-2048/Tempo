@@ -116,4 +116,10 @@ abstract class RepositoryModule {
     abstract fun bindUserProfileRepository(
         impl: com.tempo.app.repository.UserProfileRepositoryImpl
     ): com.tempo.app.repository.UserProfileRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAuthRepository(
+        impl: com.tempo.app.repository.AuthRepositoryImpl
+    ): com.tempo.app.repository.AuthRepository
 }

@@ -131,12 +131,12 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val profile = _uiState.value.userProfile ?: UserProfileDto(
                 userId = identity.userId,
-                sport = _uiState.value.answers["sport"] ?: "badminton",
+                sport = _uiState.value.answers["sport"] ?: identity.sport ?: "badminton",
                 level = _uiState.value.answers["level"] ?: "intermediate",
-                goal = _uiState.value.answers["goal"] ?: "overhead_power",
-                playstyle = _uiState.value.answers["playstyle"] ?: "aggressive",
+                goal = _uiState.value.answers["goal"] ?: "technique_refinement",
+                playstyle = _uiState.value.answers["playstyle"] ?: "all_court",
                 injuries = _uiState.value.answers["injuries"] ?: "none",
-                targetArchetype = _uiState.value.answers["archetype"] ?: "Viktor Axelsen",
+                targetArchetype = _uiState.value.answers["archetype"] ?: "Pro Benchmark",
                 calibrationCompleted = true
             )
 

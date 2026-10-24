@@ -1,20 +1,54 @@
-# Tempo Developer Runbook
+## 1. Running the FastAPI Backend Reachable from Phone
 
-## 1. Running the FastAPI Backend
-
-From repository root:
+Use the dev runner script from the repo root:
 ```bash
-# Ensure virtualenv is active and dependencies installed
-source .venv/bin/activate
-pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-
-# Start the server on port 8000
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+./scripts/dev.sh
 ```
+`scripts/dev.sh` will:
+1. Load `backend/.env` (including `GEMINI_API_KEY`).
+2. Print your machine's local LAN IPv4 addresses.
+3. Start `uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload`.
+
+> **macOS Firewall Note:** If physical phones cannot connect, open **System Settings -> Network -> Firewall** and ensure incoming connections to Python / uvicorn are allowed, or temporarily disable the firewall during local development.
 
 ---
 
-## 2. Generating Authentication Tokens
+## 2. Connecting a Physical Android Phone (Pixel 10 Pro)
+
+`10.0.2.2` is an Android Emulator-only alias and **never works on physical devices**. You have two options:
+
+### Option A: Reverse Port Forwarding via USB (Recommended & Most Reliable)
+With your phone connected via USB and USB Debugging enabled:
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+In `android/local.properties`:
+```properties
+BASE_URL=http://localhost:8000/
+```
+Then rebuild or run the app. All `localhost:8000` requests on the phone route over USB directly to your laptop's backend!
+
+### Option B: Local Wi-Fi LAN IP
+Ensure both your laptop and phone are on the same Wi-Fi network. Find your laptop's LAN IP (printed by `./scripts/dev.sh`, e.g. `192.168.1.142`).
+In `android/local.properties`:
+```properties
+BASE_URL=http://192.168.1.142:8000/
+```
+Rebuild the debug APK.
+
+---
+
+## 3. Demo User Seeding
+
+To seed the demo user (`demo@tempo.app`):
+```bash
+uv run python scripts/seed_demo_user.py
+```
+Default password is `TempoDemo2026!` (or override with `DEMO_PASSWORD` environment variable). In debug builds, you can tap "Use demo account" on the Login screen to autofill these credentials.
+
+---
+
+## 4. Generating Developer Authentication Tokens
 
 The backend authenticates requests via opaque bearer tokens validated through `backend/auth.py` and managed by `backend/manage_access.py`.
 

@@ -14,10 +14,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class LiveUiState(
-    val isStreaming: Boolean = true,
-    val heartRateBpm: Int = 168,
-    val streamingFps: Int = 3,
-    val activeCueText: String = "Accelerate forearm pronation at peak reach.",
+    val isStreaming: Boolean = false,
+    val heartRateBpm: Int? = null,
+    val streamingFps: Int? = null,
+    val activeCueText: String = "No cue triggered",
     val cooldownRemainingMs: Long = 0L,
     val canPlayCue: Boolean = true,
     val lastEventLog: String? = null,

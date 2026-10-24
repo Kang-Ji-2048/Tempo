@@ -23,11 +23,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 if __package__:
-    from . import db_mongo
+    from . import db_mongo, sports_config
     from .auth import own, principal, authenticate
     from .telemetry_time import require_recent
 else:
-    import db_mongo
+    import db_mongo, sports_config
     from auth import own, principal, authenticate
     from telemetry_time import require_recent
 
@@ -53,8 +53,8 @@ class SessionMetadata(BaseModel):
     session_id: str | None = Field(default=None, pattern=r'^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
     user_intent: str | None = Field(default=None, max_length=2000)
     user_id: str = Field(min_length=1, max_length=128, pattern=r"^\S(?:.*\S)?$")
-    sport: Literal['badminton', 'tennis']
-    stroke_type: Literal['overhead_clear', 'jump_smash', 'smash', 'serve', 'overhead_serve', 'overhead_smash']
+    sport: str = Field(default='badminton', min_length=1)
+    stroke_type: str = Field(default='overhead_clear', min_length=1)
     target_archetype: str | None = None
     telemetry: list[BiometricPoint] = Field(default_factory=list, max_length=10000)
 
@@ -68,6 +68,7 @@ class UserSchedule(BaseModel):
     priming_lead_minutes: int = Field(default=30, ge=5, le=120)
     preferred_channel: Literal['whatsapp', 'push', 'sms'] = 'whatsapp'
     is_active: bool = True
+    recent_brief: str | None = None
 
 
 def _put(collection: str, key: str, record: dict[str, Any]) -> None:
@@ -154,15 +155,47 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                     active_calories_kcal=sum(energies) if energies else None, fatigue_state=None,
                     apple_watch_payload=None, user_lon=-0.1328, user_lat=51.5248,
                 )
-            record.update(status='COMPLETED', gemini_feedback=_feedback(payload),
-                          kinematic_vector=payload['pose_analysis']['pose_vector'],
-                          pipeline_session_id=payload['session_id'],
-                          apple_watch_biometrics=payload.get('apple_watch_biometrics'),
-                          active_widgets=[{
-                              'widget_type': 'DrillCardWidget', 'id': f'{session_id}-drill',
-                              'title': 'Practice focus', 'instruction': payload['live_drill_prescription'],
-                              'focus_cue': payload['verification_status'], 'target_reps': 10,
-                          }], error_message=None)
+            llm_source = payload.get('llm_source') or ('gemini' if payload.get('coaching_status') == 'live' else 'fallback')
+            llm_model = payload.get('llm_model') or payload.get('coaching_model', 'deterministic_fallback')
+            llm_error = payload.get('llm_error') or payload.get('coaching_error_type')
+            video_used = payload.get('video_used', False)
+            latency_ms = payload.get('latency_ms', 0)
+            overall_score = payload.get('overall_score') or (88 if payload.get('verification_status') == 'PASS' else 68)
+            primary_flaw = payload.get('primary_flaw') or payload.get('biomechanical_diagnosis')
+
+            record.update(
+                status='COMPLETED',
+                overall_score=overall_score,
+                primary_flaw=primary_flaw,
+                llm_source=llm_source,
+                llm_model=llm_model,
+                llm_error=llm_error,
+                video_used=video_used,
+                latency_ms=latency_ms,
+                gemini_feedback=_feedback(payload),
+                kinematic_vector=payload['pose_analysis']['pose_vector'],
+                pipeline_session_id=payload['session_id'],
+                apple_watch_biometrics=payload.get('apple_watch_biometrics'),
+                active_widgets=[
+                    {
+                        'widget_type': 'DrillCardWidget',
+                        'id': f'{session_id}-drill',
+                        'title': 'Practice focus',
+                        'instruction': payload['live_drill_prescription'],
+                        'focus_cue': payload['verification_status'],
+                        'target_reps': 10,
+                    },
+                    {
+                        'widget_type': 'PathProgressWidget',
+                        'id': f'{session_id}-path',
+                        'sport': metadata.sport,
+                        'current_step': 2,
+                        'total_steps': 5,
+                        'headline': f"{metadata.sport.title()} {metadata.stroke_type.replace('_', ' ').title()}",
+                    }
+                ],
+                error_message=None
+            )
         except HTTPException as exc:
             record.update(status='FAILED', error_message=json.dumps(exc.detail) if isinstance(exc.detail, dict) else str(exc.detail),
                           error_code=exc.status_code)
@@ -182,6 +215,8 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=json.loads(exc.json())) from exc
         own(request, parsed.user_id)
+        if not sports_config.is_skill_analysis_ready(parsed.sport, parsed.stroke_type):
+            raise HTTPException(status_code=422, detail="skill_not_supported_yet")
         for point in parsed.telemetry:
             try:
                 require_recent(datetime.fromtimestamp(point.timestamp_ms / 1000, timezone.utc).isoformat())

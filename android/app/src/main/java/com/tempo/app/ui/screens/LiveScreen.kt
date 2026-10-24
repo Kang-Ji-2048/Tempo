@@ -119,13 +119,13 @@ fun LiveScreen(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(AccentNeonVolt)
+                                    .background(Color.Gray)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "WS /api/v1/live/stream Connected",
+                                text = "Live coaching: not connected",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = AccentNeonVolt
+                                color = TextMuted
                             )
                         }
 
@@ -161,19 +161,19 @@ fun LiveScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "KEYFRAME STREAM", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                            Text(text = "LIVE STREAM", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                             Text(
-                                text = "${uiState.streamingFps} fps low-latency",
+                                text = "Offline (not connected)",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = TextPrimaryWhite
+                                color = TextSecondarySilver
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(text = "HEART RATE", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                             Text(
-                                text = "${uiState.heartRateBpm} BPM",
+                                text = "Heart rate: no sensor",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = TextPrimaryWhite
+                                color = TextSecondarySilver
                             )
                         }
                     }
@@ -324,66 +324,101 @@ fun LiveScreen(
                 }
             }
 
-            // Interactive Live Cue Testing Buttons
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = {
-                        viewModel.triggerCue(cueText = "Keep elbow high at contact point.")
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentNeonVolt,
-                        contentColor = BackgroundOnyx
-                    ),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(imageVector = Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Trigger Earbud Cue #1",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            // Live Stream Triggers (Disabled until edge model is deployed)
+            Button(
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(
+                    disabledContainerColor = SurfaceVariantDark.copy(alpha = 0.5f),
+                    disabledContentColor = TextMuted
+                ),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "Live Stream Triggers (Disabled: no live stream)",
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
 
-                Button(
-                    onClick = {
-                        viewModel.triggerCue(cueText = "Accelerate forearm pronation now!")
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SurfaceVariantDark,
-                        contentColor = TextPrimaryWhite
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, CardBorderSubtle)
+            // Clearly labelled "Cue player test" section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
+                border = BorderStroke(1.dp, CardBorderSubtle)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(imageVector = Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Trigger Immediate Cue #2 (Tests 15s Suppression)",
-                        fontWeight = FontWeight.SemiBold
+                        text = "CUE PLAYER TEST (Audio & Rate Limiter Diagnostics)",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = AccentNeonVolt
                     )
-                }
 
-                OutlinedButton(
-                    onClick = { viewModel.resetCooldown() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CardBorderSubtle)
-                ) {
-                    Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextMuted)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Reset 15s Cooldown",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextMuted
-                    )
+                    Button(
+                        onClick = {
+                            viewModel.triggerCue(cueText = "Keep elbow high at contact point.")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AccentNeonVolt,
+                            contentColor = BackgroundOnyx
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Test Manual Cue #1",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.triggerCue(cueText = "Accelerate forearm pronation now!")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SurfaceVariantDark,
+                            contentColor = TextPrimaryWhite
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardBorderSubtle)
+                    ) {
+                        Icon(imageVector = Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Test Immediate Cue #2 (15s Suppression Test)",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = { viewModel.resetCooldown() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardBorderSubtle)
+                    ) {
+                        Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextMuted)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Reset 15s Cooldown",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TextMuted
+                        )
+                    }
                 }
             }
         }

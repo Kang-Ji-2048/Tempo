@@ -22,7 +22,7 @@ object IngestionScheduler {
         videoPath: String,
         sport: String = "badminton",
         strokeType: String = "overhead_clear",
-        targetArchetype: String? = "Axelsen",
+        targetArchetype: String? = null,
         userIntent: String? = "Working on steep angle and early high contact reach",
         userId: String,
         startMs: Long = 0L,

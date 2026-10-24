@@ -41,6 +41,30 @@ interface TempoApi {
         @Body request: com.tempo.app.network.models.OnboardingStepRequestDto
     ): com.tempo.app.network.models.OnboardingStepResponseDto
 
+    @POST("api/v1/auth/register")
+    suspend fun register(@Body request: com.tempo.app.network.models.RegisterRequestDto): com.tempo.app.network.models.AuthResponseDto
+
+    @POST("api/v1/auth/login")
+    suspend fun login(@Body request: com.tempo.app.network.models.LoginRequestDto): com.tempo.app.network.models.AuthResponseDto
+
+    @GET("api/v1/auth/me")
+    suspend fun getMe(): com.tempo.app.network.models.UserProfileDto
+
+    @POST("api/v1/auth/logout")
+    suspend fun logout(): Map<String, String>
+
+    @GET("api/v1/sports")
+    suspend fun getSports(): List<com.tempo.app.network.models.SportDto>
+
+    @POST("api/v1/profile")
+    suspend fun updateProfile(@Body profile: com.tempo.app.network.models.ProfilePayloadDto): Map<String, String>
+
+    @GET("api/v1/profile")
+    suspend fun getProfile(): com.tempo.app.network.models.UserProfileDto
+
+    @GET("api/v1/ai/status")
+    suspend fun getAiStatus(): com.tempo.app.network.models.AiStatusDto
+
     @GET("health")
     suspend fun getHealth(): Map<String, String>
 }

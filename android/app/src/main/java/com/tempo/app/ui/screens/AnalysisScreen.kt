@@ -299,6 +299,31 @@ private fun DebriefHeaderCard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Overall score + Benchmark
+            val isGemini = debrief.llmSource == "gemini"
+            val chipBg = if (isGemini) AccentNeonVolt.copy(alpha = 0.15f) else Color(0xFF3E1212)
+            val chipBorder = if (isGemini) AccentNeonVolt.copy(alpha = 0.6f) else Color(0xFFE53935)
+            val chipColor = if (isGemini) AccentNeonVolt else Color(0xFFFF8A80)
+            val chipText = if (isGemini) {
+                "AI: Gemini 4 Argon" + if (debrief.videoUsed == true) " (Video + Pose)" else " (Pose Data)"
+            } else {
+                "AI: fallback (" + (debrief.llmError?.take(40) ?: "offline / rule-based") + ")"
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(chipBg)
+                    .border(1.dp, chipBorder, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = chipText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = chipColor
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,

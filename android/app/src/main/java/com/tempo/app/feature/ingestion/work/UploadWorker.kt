@@ -62,7 +62,7 @@ class UploadWorker(
             ?: entryPoint.playerIdentity().userId
         val sport = inputData.getString(KEY_SPORT) ?: "badminton"
         val strokeType = inputData.getString(KEY_STROKE_TYPE) ?: "overhead_clear"
-        val targetArchetype = inputData.getString(KEY_TARGET_ARCHETYPE) ?: "Axelsen"
+        val targetArchetype = inputData.getString(KEY_TARGET_ARCHETYPE)
         val userIntent = inputData.getString(KEY_USER_INTENT)
             ?: "Working on steep angle and early high contact reach"
         val tempoApi = entryPoint.tempoApi()
