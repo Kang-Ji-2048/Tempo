@@ -154,6 +154,7 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                     user_name=metadata.user_id, heart_rate_bpm=heart_rate,
                     active_calories_kcal=sum(energies) if energies else None, fatigue_state=None,
                     apple_watch_payload=None, user_lon=-0.1328, user_lat=51.5248,
+                    sport=metadata.sport,
                 )
             llm_source = payload.get('llm_source') or ('gemini' if payload.get('coaching_status') == 'live' else 'fallback')
             llm_model = payload.get('llm_model') or payload.get('coaching_model', 'deterministic_fallback')

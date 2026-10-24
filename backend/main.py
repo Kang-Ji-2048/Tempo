@@ -216,6 +216,7 @@ async def analyze_badminton_pipeline(
     apple_watch_payload: Optional[str] = Form(default=None),
     user_lon: float = Form(default=-0.1328),
     user_lat: float = Form(default=51.5248),
+    sport: str = Form(default="badminton"),
 ) -> Dict[str, Any]:
     """
     Accepts `UploadFile` video + Apple Watch form fields (`user_name`, `heart_rate_bpm`, `active_calories_kcal`),
@@ -290,7 +291,7 @@ async def analyze_badminton_pipeline(
 
         # Step 2: MongoDB Atlas $vectorSearch Pro Matching & 2dsphere Geospatial Partner Discovery (Taha)
         user_pose_vector = pose_result["pose_vector"]
-        pro_match = find_closest_pro_pose(user_pose_vector)
+        pro_match = find_closest_pro_pose(user_pose_vector, sport=sport)
         partner_match = find_training_partner(
             city="London",
             user_pose_vector=user_pose_vector,
@@ -364,7 +365,7 @@ async def analyze_badminton_pipeline(
                 "validation_status": pro_match.get("validation_status", "illustrative_unvalidated"),
                 "matched_pro": pro_match.get("player_name"),
                 "country": pro_match.get("country"),
-                "sport": pro_match.get("sport", "Tennis"),
+                "sport": pro_match.get("sport", sport),
                 "stroke_type": pro_match.get("stroke_type"),
                 "pro_right_elbow_contact_deg": pro_match.get("right_elbow_contact_deg"),
                 "pro_pose_vector": pro_match.get("pose_vector"),

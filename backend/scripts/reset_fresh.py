@@ -62,6 +62,8 @@ def main() -> int:
     print(f"seeded strokes: {len(db_mongo.PRO_REFERENCE_STROKES)} pro references "
           f"({', '.join(r['player_name'] for r in db_mongo.PRO_REFERENCE_STROKES)})")
 
+    print(f"pose vector index: {db_mongo.ensure_pose_vector_index(db)['action']} (filters: is_pro_reference, sport)")
+
     facilities = db[FACILITIES_COLLECTION]
     facilities.create_index([("location_geojson", GEOSPHERE)], name="location_2dsphere_idx")
     for fac in LONDON_FACILITIES:

@@ -79,7 +79,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_roger_federer_serve_smash",
         "player_name": "Roger Federer",
         "country": "SUI",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Pinpoint Overhead Serve & High-Contact Smash",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 176.5,
@@ -106,7 +106,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_novak_djokovic_serve_smash",
         "player_name": "Novak Djokovic",
         "country": "SRB",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Elastic Kinetic-Chain Overhead Serve & Smash",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 174.0,
@@ -133,7 +133,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_carlos_alcaraz_overhead",
         "player_name": "Carlos Alcaraz",
         "country": "ESP",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Explosive Jump Overhead Smash & Kick Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 171.5,
@@ -159,7 +159,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_serena_williams_serve",
         "player_name": "Serena Williams",
         "country": "USA",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Power First Serve & Overhead Drive",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 175.5,
@@ -185,7 +185,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_jannik_sinner_serve",
         "player_name": "Jannik Sinner",
         "country": "ITA",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "High-Leverage Platform Overhead Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 173.0,
@@ -211,7 +211,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_rafael_nadal_overhead",
         "player_name": "Rafael Nadal",
         "country": "ESP",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Skyhook Overhead Smash & Slice Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 169.5,
@@ -747,13 +747,40 @@ def _strip_mongo_id(doc: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
-def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
+def ensure_pose_vector_index(db: Any) -> Dict[str, Any]:
     """
-    Match `user_pose_vector` against pro reference strokes (Roger Federer, Novak Djokovic,
-    Carlos Alcaraz, Serena Williams, Jannik Sinner, Rafael Nadal) using MongoDB Atlas
-    `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`), with a Python
-    cosine-similarity fallback if the Atlas index isn't built yet or MongoDB is offline.
+    Create or update the Atlas `pose_vector_index` on `strokes.pose_vector` (6D cosine),
+    with `is_pro_reference` and `sport` as filter fields for per-sport pro matching.
     """
+    from pymongo.operations import SearchIndexModel
+
+    definition = {
+        "fields": [
+            {"type": "vector", "path": "pose_vector", "numDimensions": 6, "similarity": "cosine"},
+            {"type": "filter", "path": "is_pro_reference"},
+            {"type": "filter", "path": "sport"},
+        ]
+    }
+    col = db[STROKES_COLLECTION]
+    existing = {idx["name"]: idx for idx in col.list_search_indexes()}
+    if VECTOR_INDEX_NAME in existing:
+        col.update_search_index(VECTOR_INDEX_NAME, definition)
+        return {"index": VECTOR_INDEX_NAME, "action": "updated"}
+    col.create_search_index(SearchIndexModel(definition=definition, name=VECTOR_INDEX_NAME, type="vectorSearch"))
+    return {"index": VECTOR_INDEX_NAME, "action": "created"}
+
+
+def find_closest_pro_pose(user_pose_vector: List[float], sport: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Match `user_pose_vector` against pro reference strokes of the user's `sport` (tennis or badminton)
+    using MongoDB Atlas `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`, filtered on
+    `sport`), with a Python cosine-similarity fallback if the Atlas index isn't built yet or MongoDB is
+    offline. If no pros exist for `sport`, all pros are considered and `sport_matched` is False.
+    """
+    sport_id = (sport or "").strip().lower() or None
+    pro_filter: Dict[str, Any] = {"is_pro_reference": True}
+    if sport_id:
+        pro_filter["sport"] = sport_id
     db = get_db()
     if db is not None:
         try:
@@ -765,7 +792,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                         "queryVector": [float(x) for x in user_pose_vector],
                         "numCandidates": 20,
                         "limit": 4,
-                        "filter": {"is_pro_reference": True},
+                        "filter": pro_filter,
                     }
                 },
                 {
@@ -794,6 +821,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                 best = _strip_mongo_id(results[0])
                 best["similarity_score"] = round(float(best.get("similarity_score", 0.0)), 4)
                 best["search_method"] = "mongodb_atlas_vector_search"
+                best["sport_matched"] = bool(sport_id)
                 best["all_pro_matches"] = [_strip_mongo_id(r) for r in results]
                 return best
         except Exception:
@@ -807,6 +835,10 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
             candidates = []
     if not candidates:
         candidates = [dict(doc) for doc in PRO_REFERENCE_STROKES]
+    same_sport = [c for c in candidates if sport_id and c.get("sport") == sport_id]
+    sport_matched = bool(same_sport)
+    if sport_matched:
+        candidates = same_sport
 
     scored: List[Tuple[float, Dict[str, Any]]] = []
     for cand in candidates:
@@ -818,6 +850,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
     scored.sort(key=lambda item: item[0], reverse=True)
     best_match = dict(scored[0][1])
     best_match["search_method"] = "python_cosine_similarity_fallback"
+    best_match["sport_matched"] = sport_matched
     best_match["all_pro_matches"] = [item[1] for item in scored]
     return best_match
 
