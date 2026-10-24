@@ -19,7 +19,7 @@ import com.tempo.app.ui.screens.ScheduleScreen
 fun TempoNavGraph(
     navController: NavHostController,
     modifier: Modifier = Modifier,
-    startDestination: String = Screen.Onboarding.route
+    startDestination: String = Screen.Home.route
 ) {
     NavHost(
         navController = navController,

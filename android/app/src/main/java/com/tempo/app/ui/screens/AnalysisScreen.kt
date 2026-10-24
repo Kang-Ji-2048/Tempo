@@ -52,6 +52,7 @@ import com.tempo.app.feature.analysis.AnalysisStep
 import com.tempo.app.feature.analysis.AnalysisViewModel
 import com.tempo.app.feature.analysis.BiomechanicalDebrief
 import com.tempo.app.feature.analysis.ui.AnalysisStepper
+import com.tempo.app.feature.audio.ui.DebriefPlayer
 import com.tempo.app.feature.correction.ui.KeyframeStripView
 import com.tempo.app.feature.correction.ui.VisualCorrectionPlayer
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
@@ -202,6 +203,15 @@ fun AnalysisScreen(
         if (uiState.step == AnalysisStep.COMPLETED && uiState.debrief != null) {
             item {
                 DebriefHeaderCard(debrief = uiState.debrief!!)
+            }
+
+            // Coach Voice Debrief Player (Media3 ExoPlayer / TTS fallback + Bluetooth earbud routing)
+            item {
+                DebriefPlayer(
+                    voiceNoteUrl = uiState.debrief!!.voiceNoteUrl,
+                    voiceNoteScript = uiState.debrief!!.voiceNoteScript,
+                    autoOffer = true
+                )
             }
 
             uiState.feedbackNotice?.let { message ->

@@ -18,7 +18,8 @@ data class BiomechanicalDebrief(
     val primaryFlaw: String,
     val matchedArchetype: String?,
     val audioCue: String? = null,
-    val voiceNoteScript: String? = null
+    val voiceNoteScript: String? = null,
+    val voiceNoteUrl: String? = null
 )
 
 data class AnalysisUiState(

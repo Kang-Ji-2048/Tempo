@@ -83,7 +83,8 @@ class MockTempoApi @Inject constructor() : TempoApi {
             put("matched_archetype", "Viktor Axelsen")
             put("primary_flaw", "Elbow dropped to 158.4° at contact")
             put("concise_audio_cue", "Accelerate forearm pronation at peak reach.")
-            put("coach_voice_note_script", "Great session today! Your contact reach was explosive.")
+            put("coach_voice_note_script", "Great session today! Your contact reach was explosive, but your elbow dropped to 158 degrees before full pronation. Focus on driving your elbow to 175 degrees at impact for maximum steepness.")
+            put("voice_note_url", "https://actions.google.com/sounds/v1/sports/badminton_rally.ogg")
             put("kinetic_phases", kotlinx.serialization.json.buildJsonArray {
                 add(buildJsonObject {
                     put("phase_name", "Preparation")

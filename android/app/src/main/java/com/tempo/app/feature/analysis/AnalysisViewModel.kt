@@ -134,10 +134,14 @@ class AnalysisViewModel @Inject constructor(
                                     sessionDao.updateStatus(sessionId, "COMPLETED")
                                     _uiState.update { it.copy(step = AnalysisStep.COMPLETED, statusCopy = "Analysis ready",
                                         debrief = BiomechanicalDebrief(
-                                            (feedback?.get("overall_score") as? JsonPrimitive)?.intOrNull?.takeIf { it in 0..100 },
-                                            (text("primary_flaw") ?: "No diagnosis was returned.") +
-                                        if (text("reference_status") != "validated") " Reference profiles are illustrative and unvalidated." else "",
-                                            text("matched_archetype"), text("concise_audio_cue"), text("coach_voice_note_script")),
+                                            overallScore = (feedback?.get("overall_score") as? JsonPrimitive)?.intOrNull?.takeIf { it in 0..100 },
+                                            primaryFlaw = (text("primary_flaw") ?: "No diagnosis was returned.") +
+                                                if (text("reference_status") != "validated") " Reference profiles are illustrative and unvalidated." else "",
+                                            matchedArchetype = text("matched_archetype"),
+                                            audioCue = text("concise_audio_cue"),
+                                            voiceNoteScript = text("coach_voice_note_script"),
+                                            voiceNoteUrl = text("voice_note_url")
+                                        ),
                                         kineticPhases = phases, widgets = widgetParser.parse(record.activeWidgets.orEmpty()), isPolling = false,
                                         feedbackNotice = when {
                                             com.tempo.app.BuildConfig.USE_MOCK_API -> "Demo results: these are sample coaching responses."
