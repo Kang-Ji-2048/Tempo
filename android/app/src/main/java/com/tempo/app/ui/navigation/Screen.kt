@@ -9,4 +9,5 @@ sealed class Screen(val route: String) {
     }
     data object Live : Screen("live")
     data object Schedule : Screen("schedule")
+    data object SduiDebug : Screen("debug/sdui")
 }

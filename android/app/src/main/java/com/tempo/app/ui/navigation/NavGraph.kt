@@ -7,6 +7,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.tempo.app.feature.sdui.debug.SduiDebugScreen
 import com.tempo.app.ui.screens.AnalysisScreen
 import com.tempo.app.ui.screens.CaptureScreen
 import com.tempo.app.ui.screens.HomeScreen
@@ -51,6 +52,9 @@ fun TempoNavGraph(
         }
         composable(Screen.Schedule.route) {
             ScheduleScreen(navController = navController)
+        }
+        composable(Screen.SduiDebug.route) {
+            SduiDebugScreen(onNavigateToCapture = { navController.navigate(Screen.Capture.route) })
         }
     }
 }

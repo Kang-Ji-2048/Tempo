@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.tempo.app.BuildConfig
 import com.tempo.app.ui.navigation.Screen
 import com.tempo.app.ui.theme.AccentNeonVolt
 import com.tempo.app.ui.theme.BackgroundOnyx
@@ -150,6 +151,17 @@ fun HomeScreen(
             shape = MaterialTheme.shapes.medium
         ) {
             Text(text = "View Athlete Onboarding", color = TextSecondarySilver)
+        }
+
+        if (BuildConfig.DEBUG) {
+            OutlinedButton(
+                onClick = { navController.navigate(Screen.SduiDebug.route) },
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.5f)),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text(text = "Open SDUI Lab (debug)", color = AccentNeonVolt)
+            }
         }
     }
 }
