@@ -525,6 +525,17 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
                 upsert=True,
             )
 
+        # Migrate any legacy placeholder records to user_1
+        strokes_col.update_many({"user_name": "Sumanth"}, {"$set": {"user_name": "user_1"}})
+        players_col.update_many({"user_name": "Sumanth"}, {"$set": {"user_name": "user_1"}})
+        try:
+            db[WATCH_TS_COLLECTION].update_many(
+                {"metadata.user_name": "Sumanth"},
+                {"$set": {"metadata.user_name": "user_1"}},
+            )
+        except Exception:
+            pass
+
         for partner in SEED_LONDON_PARTNERS:
             players_col.update_one(
                 {"player_id": partner["player_id"]},
