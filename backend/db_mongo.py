@@ -273,11 +273,11 @@ SEED_LONDON_PARTNERS: List[Dict[str, Any]] = [
     },
 ]
 
-# Seed historical sessions for Sumanth so longitudinal `$facet` + `$bucket` analytics work immediately
+# Seed historical sessions for user_1 so longitudinal `$facet` + `$bucket` analytics work immediately
 SEED_HISTORICAL_SESSIONS: List[Dict[str, Any]] = [
     {
         "session_id": "seed_session_fresh_01",
-        "user_name": "Sumanth",
+        "user_name": "user_1",
         "is_pro_reference": False,
         "verification_status": "PASS",
         "created_at": "2026-10-21T19:15:00+00:00",
@@ -305,7 +305,7 @@ SEED_HISTORICAL_SESSIONS: List[Dict[str, Any]] = [
     },
     {
         "session_id": "seed_session_moderate_02",
-        "user_name": "Sumanth",
+        "user_name": "user_1",
         "is_pro_reference": False,
         "verification_status": "PASS",
         "created_at": "2026-10-22T20:10:00+00:00",
@@ -333,7 +333,7 @@ SEED_HISTORICAL_SESSIONS: List[Dict[str, Any]] = [
     },
     {
         "session_id": "seed_session_fatigued_03",
-        "user_name": "Sumanth",
+        "user_name": "user_1",
         "is_pro_reference": False,
         "verification_status": "FAIL",
         "created_at": "2026-10-23T21:30:00+00:00",
@@ -521,7 +521,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
         for hist in SEED_HISTORICAL_SESSIONS:
             strokes_col.update_one(
                 {"session_id": hist["session_id"]},
-                {"$setOnInsert": hist},
+                {"$set": hist},
                 upsert=True,
             )
 
@@ -538,7 +538,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
             sample_points = [
                 {
                     "timestamp": now - datetime.timedelta(seconds=30),
-                    "metadata": {"user_name": "Sumanth", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
+                    "metadata": {"user_name": "user_1", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
                     "heart_rate_bpm": 162.0,
                     "hrv_sdnn_ms": 34.0,
                     "active_calories_kcal": 460.0,
@@ -547,7 +547,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
                 },
                 {
                     "timestamp": now - datetime.timedelta(seconds=15),
-                    "metadata": {"user_name": "Sumanth", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
+                    "metadata": {"user_name": "user_1", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
                     "heart_rate_bpm": 169.0,
                     "hrv_sdnn_ms": 27.5,
                     "active_calories_kcal": 478.0,
@@ -556,7 +556,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = True) -> Dict[str, 
                 },
                 {
                     "timestamp": now,
-                    "metadata": {"user_name": "Sumanth", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
+                    "metadata": {"user_name": "user_1", "device": "Apple Watch Ultra", "pairing_code": "TMPO-88"},
                     "heart_rate_bpm": 174.5,
                     "hrv_sdnn_ms": 22.8,
                     "active_calories_kcal": 495.0,
@@ -747,7 +747,7 @@ def find_training_partner(
     return best
 
 
-def create_watch_pairing_session(user_name: str = "Sumanth", android_device_id: str = "pixel_compose_01") -> Dict[str, Any]:
+def create_watch_pairing_session(user_name: str = "user_1", android_device_id: str = "pixel_compose_01") -> Dict[str, Any]:
     """
     Create a 6-character pairing code (e.g. `TMPO-88`) in MongoDB so the Android Jetpack Compose app
     and the player's Apple Watch / iPhone HealthKit Shortcut link seamlessly without typing URLs.
@@ -789,7 +789,7 @@ def save_live_watch_telemetry(
     1. MongoDB Time-Series collection (`watch_telemetry_ts`) for `$setWindowFields` rolling heart-rate analytics.
     2. Latest player state in `players` so the Android app and next stroke analysis automatically use it.
     """
-    resolved_user = (user_name or "Sumanth").strip()
+    resolved_user = (user_name or "user_1").strip()
     if pairing_code and pairing_code in _MEMORY_PAIRINGS:
         resolved_user = _MEMORY_PAIRINGS[pairing_code].get("user_name", resolved_user)
 
@@ -838,7 +838,7 @@ def save_live_watch_telemetry(
     return _strip_mongo_id(record)
 
 
-def get_watch_timeseries_window(user_name: str = "Sumanth", limit: int = 15) -> Dict[str, Any]:
+def get_watch_timeseries_window(user_name: str = "user_1", limit: int = 15) -> Dict[str, Any]:
     """
     Query the MongoDB Time-Series collection (`watch_telemetry_ts`) using `$setWindowFields`
     to compute a rolling 3-sample moving-average Heart Rate and Fatigue Index for the Android app.
@@ -849,11 +849,13 @@ def get_watch_timeseries_window(user_name: str = "Sumanth", limit: int = 15) -> 
 
     if db is not None:
         try:
+            match_stage = {"$match": {"metadata.user_name": user_name}}
+            if db[WATCH_TS_COLLECTION].count_documents({"metadata.user_name": user_name}) == 0:
+                match_stage = {"$match": {}}
             pipeline = [
-                {"$match": {"metadata.user_name": user_name}},
+                match_stage,
                 {
                     "$setWindowFields": {
-                        "partitionBy": "$metadata.user_name",
                         "sortBy": {"timestamp": 1},
                         "output": {
                             "rolling_avg_hr_bpm": {
@@ -897,7 +899,7 @@ def get_watch_timeseries_window(user_name: str = "Sumanth", limit: int = 15) -> 
     }
 
 
-def get_fatigue_biomechanics_analytics(user_name: str = "Sumanth") -> Dict[str, Any]:
+def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, Any]:
     """
     Run a multi-stage MongoDB `$facet` + `$bucket` aggregation pipeline on `strokes`
     that correlates Apple Watch Heart Rate Zones (<145 BPM, 145-165 BPM, >165 BPM)
@@ -1076,7 +1078,7 @@ def save_analysis_session(session_doc: Dict[str, Any]) -> str:
 def update_saint_approval(
     session_id: Optional[str],
     approved: bool,
-    reviewer_name: str = "Sumanth",
+    reviewer_name: str = "user_1",
     notes: Optional[str] = None,
     dispatch_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:

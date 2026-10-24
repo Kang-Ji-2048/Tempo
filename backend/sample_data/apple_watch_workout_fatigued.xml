@@ -7,7 +7,7 @@
            durationUnit="min"
            totalEnergyBurned="548.6"
            totalEnergyBurnedUnit="kcal"
-           sourceName="Sumanth’s Apple Watch Ultra"
+           sourceName="user_1’s Apple Watch Ultra"
            startDate="2026-10-23 21:00:00 +0100"
            endDate="2026-10-23 21:52:24 +0100">
     <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate"
@@ -24,13 +24,13 @@
                        unit="kcal"/>
   </Workout>
   <Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
-          sourceName="Sumanth’s Apple Watch Ultra"
+          sourceName="user_1’s Apple Watch Ultra"
           unit="ms"
           value="22.4"
           startDate="2026-10-23 21:50:00 +0100"
           endDate="2026-10-23 21:51:00 +0100"/>
   <Record type="HKQuantityTypeIdentifierRestingHeartRate"
-          sourceName="Sumanth’s Apple Watch Ultra"
+          sourceName="user_1’s Apple Watch Ultra"
           unit="count/min"
           value="56.0"
           startDate="2026-10-23 08:00:00 +0100"

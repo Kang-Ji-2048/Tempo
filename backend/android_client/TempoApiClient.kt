@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit
 // --- Data Models matching FastAPI & MongoDB Atlas Unified JSON ---
 
 data class PairWatchRequest(
-    val user_name: String = "Sumanth",
+    val user_name: String = "user_1",
     val android_device_id: String = "android_compose_app"
 )
 
@@ -130,7 +130,7 @@ data class StrokeAnalysisResponse(
 
 data class ApproveSaintRequest(
     val session_id: String,
-    val user_name: String = "Sumanth",
+    val user_name: String = "user_1",
     val approved: Boolean = true,
     val notes: String = "Approved via Android Jetpack Compose app"
 )
@@ -163,10 +163,10 @@ interface TempoBackendService {
     suspend fun approveSaintAction(@Body request: ApproveSaintRequest): ApproveSaintResponse
 
     @GET("/pipeline/analytics/{userName}")
-    suspend fun getFatigueAnalytics(@Path("userName") userName: String = "Sumanth"): LongitudinalFatigueAnalytics
+    suspend fun getFatigueAnalytics(@Path("userName") userName: String = "user_1"): LongitudinalFatigueAnalytics
 
     @GET("/pipeline/latest-apple-watch")
-    suspend fun getLatestWatchMetrics(@Query("user_name") userName: String = "Sumanth"): Map<String, Any>
+    suspend fun getLatestWatchMetrics(@Query("user_name") userName: String = "user_1"): Map<String, Any>
 }
 
 // --- Client Helper with Live Apple Watch SSE Stream ---
@@ -187,7 +187,7 @@ class TempoRepository(private val baseUrl: String = "http://192.168.68.106:8000"
 
     suspend fun uploadVideoForAnalysis(
         videoFile: File?,
-        userName: String = "Sumanth",
+        userName: String = "user_1",
         lon: Double = -0.1328, // UCL Bloomsbury / Central London
         lat: Double = 51.5248
     ): StrokeAnalysisResponse {
