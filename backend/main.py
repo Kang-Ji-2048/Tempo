@@ -84,6 +84,7 @@ def health_check() -> Dict[str, Any]:
 @app.post("/pipeline/analyze-stroke")
 async def analyze_badminton_pipeline(
     video: Optional[UploadFile] = File(default=None),
+    apple_watch_file: Optional[UploadFile] = File(default=None),
     user_name: str = Form(default="Sumanth"),
     heart_rate_bpm: float = Form(default=168.0),
     active_calories_kcal: float = Form(default=420.0),
@@ -91,9 +92,9 @@ async def analyze_badminton_pipeline(
     apple_watch_payload: Optional[str] = Form(default=None),
 ) -> Dict[str, Any]:
     """
-    Accepts `UploadFile` video + Apple Watch form fields (`user_name`, `heart_rate_bpm`, `active_calories_kcal`),
-    runs `etl_pose -> db_mongo -> agent_argon_saint`, saves the session to MongoDB, and returns the unified JSON
-    for the Android Jetpack Compose frontend.
+    Accepts `UploadFile` video + Apple Watch form fields (`user_name`, `heart_rate_bpm`, `active_calories_kcal`)
+    or an `apple_watch_file` (`.xml` / `.json` / `.zip` export), runs `etl_pose -> db_mongo -> agent_argon_saint`,
+    saves the session to MongoDB, and returns the unified JSON for the Android Jetpack Compose frontend.
     """
     seed_reference_data()
 
@@ -110,10 +111,16 @@ async def analyze_badminton_pipeline(
                     tmp.write(content)
                     temp_video_path = tmp.name
 
+        watch_raw_payload: Optional[Any] = apple_watch_payload
+        if apple_watch_file is not None:
+            watch_bytes = await apple_watch_file.read()
+            if watch_bytes:
+                watch_raw_payload = watch_bytes
+
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
         pose_result = extract_pose_from_video(temp_video_path or "")
         watch_metrics = parse_apple_watch_metrics(
-            payload=apple_watch_payload,
+            payload=watch_raw_payload,
             heart_rate_bpm=heart_rate_bpm,
             active_calories_kcal=active_calories_kcal,
             fatigue_state=fatigue_state,
@@ -175,6 +182,45 @@ async def analyze_badminton_pipeline(
                 os.remove(temp_video_path)
             except OSError:
                 pass
+
+
+@app.post("/pipeline/etl-apple-watch")
+async def etl_apple_watch_endpoint(
+    request: Request,
+    apple_watch_file: Optional[UploadFile] = File(default=None),
+    apple_watch_payload: Optional[str] = Form(default=None),
+    heart_rate_bpm: Optional[float] = Form(default=None),
+    active_calories_kcal: Optional[float] = Form(default=None),
+    fatigue_state: Optional[str] = Form(default=None),
+) -> Dict[str, Any]:
+    """
+    Dedicated Apple Watch Biometrics ETL endpoint:
+    Accepts an Apple Health `export.xml`, `export.zip`, or JSON file upload (`apple_watch_file`),
+    a raw JSON/XML string (`apple_watch_payload`), or direct JSON body from an iOS/WatchOS shortcut,
+    and returns normalized biometrics + fatigue classification.
+    """
+    raw_payload: Optional[Any] = apple_watch_payload
+    if apple_watch_file is not None:
+        file_bytes = await apple_watch_file.read()
+        if file_bytes:
+            raw_payload = file_bytes
+    elif "application/json" in request.headers.get("content-type", "").lower():
+        try:
+            raw_payload = await request.json()
+        except Exception:
+            pass
+
+    metrics = parse_apple_watch_metrics(
+        payload=raw_payload,
+        heart_rate_bpm=heart_rate_bpm,
+        active_calories_kcal=active_calories_kcal,
+        fatigue_state=fatigue_state,
+    )
+    return {
+        "status": "ok",
+        "apple_watch_biometrics": metrics,
+    }
+
 
 
 @app.post("/pipeline/approve-saint-action")

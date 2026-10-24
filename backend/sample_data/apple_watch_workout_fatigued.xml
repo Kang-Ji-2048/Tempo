@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_GB">
+  <ExportDate value="2026-10-24 05:35:00 +0100"/>
+  <Me HKCharacteristicTypeIdentifierBiologicalSex="HKBiologicalSexMale"/>
+  <Workout workoutActivityType="HKWorkoutActivityTypeTennis"
+           duration="52.4"
+           durationUnit="min"
+           totalEnergyBurned="548.6"
+           totalEnergyBurnedUnit="kcal"
+           sourceName="Sumanth’s Apple Watch Ultra"
+           startDate="2026-10-23 21:00:00 +0100"
+           endDate="2026-10-23 21:52:24 +0100">
+    <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate"
+                       startDate="2026-10-23 21:00:00 +0100"
+                       endDate="2026-10-23 21:52:24 +0100"
+                       average="174.8"
+                       minimum="118.0"
+                       maximum="189.0"
+                       unit="count/min"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned"
+                       startDate="2026-10-23 21:00:00 +0100"
+                       endDate="2026-10-23 21:52:24 +0100"
+                       sum="548.6"
+                       unit="kcal"/>
+  </Workout>
+  <Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+          sourceName="Sumanth’s Apple Watch Ultra"
+          unit="ms"
+          value="22.4"
+          startDate="2026-10-23 21:50:00 +0100"
+          endDate="2026-10-23 21:51:00 +0100"/>
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate"
+          sourceName="Sumanth’s Apple Watch Ultra"
+          unit="count/min"
+          value="56.0"
+          startDate="2026-10-23 08:00:00 +0100"
+          endDate="2026-10-23 08:05:00 +0100"/>
+</HealthData>

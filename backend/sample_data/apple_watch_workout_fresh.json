@@ -1,0 +1,12 @@
+{
+  "device": "Apple Watch Series 10",
+  "player": "Sumanth",
+  "workout_activity_type": "HKWorkoutActivityTypeTennis",
+  "heart_rate_bpm": 141.5,
+  "peak_heart_rate_bpm": 158.0,
+  "resting_heart_rate_bpm": 55.0,
+  "hrv_sdnn_ms": 54.2,
+  "active_calories_kcal": 265.0,
+  "workout_duration_min": 28.0,
+  "wrist_acceleration_peak_mps": 32.8
+}

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import zipfile
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -229,14 +230,57 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
     }
 
 
-def _derive_fatigue_state(heart_rate_bpm: float, active_calories_kcal: float, explicit_state: Optional[str] = None) -> str:
+def _derive_fatigue_state(
+    heart_rate_bpm: float,
+    active_calories_kcal: float,
+    explicit_state: Optional[str] = None,
+    hrv_sdnn_ms: Optional[float] = None,
+) -> str:
     if explicit_state and str(explicit_state).strip():
         return str(explicit_state).strip().upper()
-    if heart_rate_bpm >= 172.0 or active_calories_kcal >= 600.0:
+    if (
+        heart_rate_bpm >= 172.0
+        or active_calories_kcal >= 600.0
+        or (hrv_sdnn_ms is not None and hrv_sdnn_ms < 28.0)
+    ):
         return "HIGH_FATIGUE_AEROBIC_OVERLOAD"
-    if heart_rate_bpm >= 150.0 or active_calories_kcal >= 350.0:
+    if (
+        heart_rate_bpm >= 150.0
+        or active_calories_kcal >= 350.0
+        or (hrv_sdnn_ms is not None and hrv_sdnn_ms < 45.0)
+    ):
         return "MODERATE_FATIGUE_ELEVATED_LOAD"
     return "OPTIMAL_RECOVERY_READY"
+
+
+def _compute_fatigue_index(
+    heart_rate_bpm: float,
+    active_calories_kcal: float,
+    hrv_sdnn_ms: Optional[float] = None,
+) -> float:
+    """
+    Compute a normalized [0.0 - 100.0] cardiovascular fatigue score from Apple Watch biometrics.
+    """
+    hr_norm = max(0.0, min(1.0, (heart_rate_bpm - 90.0) / 105.0))
+    cal_norm = max(0.0, min(1.0, active_calories_kcal / 800.0))
+    if hrv_sdnn_ms is not None and hrv_sdnn_ms > 0:
+        hrv_norm = max(0.0, min(1.0, (80.0 - hrv_sdnn_ms) / 65.0))
+        score = (0.55 * hr_norm + 0.25 * cal_norm + 0.20 * hrv_norm) * 100.0
+    else:
+        score = (0.65 * hr_norm + 0.35 * cal_norm) * 100.0
+    return round(float(score), 1)
+
+
+def _extract_xml_bytes_if_zip(raw_bytes: bytes) -> bytes:
+    """If the user uploaded an Apple Health `export.zip`, extract `export.xml` from it."""
+    if raw_bytes[:4] == b"PK\x03\x04":
+        import io
+
+        with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+            for name in zf.namelist():
+                if name.lower().endswith("export.xml") or name.lower().endswith(".xml"):
+                    return zf.read(name)
+    return raw_bytes
 
 
 def parse_apple_watch_metrics(
@@ -246,71 +290,221 @@ def parse_apple_watch_metrics(
     fatigue_state: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Helper to parse Apple Watch workout JSON/XML metrics or form fields into a normalized dictionary:
-    `heart_rate_bpm`, `active_calories_kcal`, and `fatigue_state`.
+    ETL parser for Apple Watch workout biometrics:
+    Supports:
+    1. Apple HealthKit `export.xml` or `export.zip` (`<Workout>`, `<WorkoutStatistics>`, `<Record>`)
+    2. Live Apple Watch HealthKit / Health Auto Export JSON payloads
+    3. Direct form fields (`heart_rate_bpm`, `active_calories_kcal`, `fatigue_state`)
     """
-    hr = float(heart_rate_bpm) if heart_rate_bpm is not None else None
-    cal = float(active_calories_kcal) if active_calories_kcal is not None else None
+    hr: Optional[float] = float(heart_rate_bpm) if heart_rate_bpm is not None else None
+    peak_hr: Optional[float] = None
+    resting_hr: Optional[float] = None
+    hrv_sdnn_ms: Optional[float] = None
+    cal: Optional[float] = float(active_calories_kcal) if active_calories_kcal is not None else None
+    duration_min: Optional[float] = None
+    wrist_speed_mps: Optional[float] = None
+    workout_type: str = "HKWorkoutActivityTypeTennis"
+    source_format: str = "form_fields"
     f_state = fatigue_state
+
+    # Check if `payload` is a file path on disk
+    if isinstance(payload, str) and os.path.exists(payload) and os.path.isfile(payload):
+        with open(payload, "rb") as f:
+            payload = f.read()
 
     if payload is not None:
         if isinstance(payload, dict):
-            hr = float(payload.get("heart_rate_bpm", hr if hr is not None else 168.0))
-            cal = float(payload.get("active_calories_kcal", cal if cal is not None else 420.0))
+            source_format = "json_dict"
+            hr = float(payload.get("heart_rate_bpm", payload.get("heartRateBpm", hr if hr is not None else 168.0)))
+            peak_hr = float(payload.get("peak_heart_rate_bpm", payload.get("maxHeartRateBpm", hr)))
+            resting_hr = (
+                float(payload["resting_heart_rate_bpm"])
+                if "resting_heart_rate_bpm" in payload
+                else None
+            )
+            hrv_sdnn_ms = (
+                float(payload["hrv_sdnn_ms"])
+                if "hrv_sdnn_ms" in payload
+                else None
+            )
+            cal = float(
+                payload.get(
+                    "active_calories_kcal",
+                    payload.get("activeCaloriesKcal", cal if cal is not None else 420.0),
+                )
+            )
+            duration_min = (
+                float(payload["workout_duration_min"])
+                if "workout_duration_min" in payload
+                else None
+            )
+            wrist_speed_mps = (
+                float(payload["wrist_acceleration_peak_mps"])
+                if "wrist_acceleration_peak_mps" in payload
+                else None
+            )
+            workout_type = str(payload.get("workout_activity_type", workout_type))
             f_state = payload.get("fatigue_state", f_state)
+
         elif isinstance(payload, (str, bytes)):
-            text = payload.decode("utf-8", errors="ignore").strip() if isinstance(payload, bytes) else payload.strip()
+            if isinstance(payload, bytes):
+                raw_bytes = _extract_xml_bytes_if_zip(payload)
+                text = raw_bytes.decode("utf-8", errors="ignore").strip()
+            else:
+                text = payload.strip()
+
             if text.startswith("{"):
+                source_format = "apple_watch_json"
                 try:
                     data = json.loads(text)
-                    hr = float(data.get("heart_rate_bpm", data.get("heartRateBpm", hr if hr is not None else 168.0)))
+                    # Support nested Health Auto Export / HealthKit JSON structures (`data.workouts` or flat)
+                    if isinstance(data.get("data"), dict) and isinstance(data["data"].get("workouts"), list) and data["data"]["workouts"]:
+                        w = data["data"]["workouts"][-1]
+                        data = {**data, **w}
+
+                    hr = float(
+                        data.get(
+                            "heart_rate_bpm",
+                            data.get("heartRateBpm", data.get("avgHeartRate", hr if hr is not None else 168.0)),
+                        )
+                    )
+                    if "peak_heart_rate_bpm" in data or "maxHeartRate" in data:
+                        peak_hr = float(data.get("peak_heart_rate_bpm", data.get("maxHeartRate")))
+                    if "resting_heart_rate_bpm" in data or "restingHeartRate" in data:
+                        resting_hr = float(data.get("resting_heart_rate_bpm", data.get("restingHeartRate")))
+                    if "hrv_sdnn_ms" in data or "heartRateVariabilitySDNN" in data:
+                        hrv_sdnn_ms = float(data.get("hrv_sdnn_ms", data.get("heartRateVariabilitySDNN")))
                     cal = float(
                         data.get(
                             "active_calories_kcal",
-                            data.get("activeCaloriesKcal", cal if cal is not None else 420.0),
+                            data.get(
+                                "activeCaloriesKcal",
+                                data.get("activeEnergyBurned", cal if cal is not None else 420.0),
+                            ),
                         )
                     )
+                    if "workout_duration_min" in data or "durationMinutes" in data:
+                        duration_min = float(data.get("workout_duration_min", data.get("durationMinutes")))
+                    if "wrist_acceleration_peak_mps" in data:
+                        wrist_speed_mps = float(data["wrist_acceleration_peak_mps"])
+                    workout_type = str(data.get("workout_activity_type", data.get("workoutActivityType", workout_type)))
                     f_state = data.get("fatigue_state", data.get("fatigueState", f_state))
                 except Exception:
                     pass
+
             elif text.startswith("<"):
+                source_format = "apple_healthkit_xml"
                 try:
                     root = ET.fromstring(text)
-                    # Support Apple HealthKit Workout / Record XML or custom Watch XML
+                    hr_samples: List[float] = []
+                    resting_samples: List[float] = []
+                    hrv_samples: List[float] = []
+                    cal_samples: List[float] = []
+
                     for elem in root.iter():
                         tag = elem.tag.lower()
                         attrib = {k.lower(): v for k, v in elem.attrib.items()}
+
+                        # Direct custom attributes
                         if "heart_rate_bpm" in attrib:
-                            hr = float(attrib["heart_rate_bpm"])
+                            hr_samples.append(float(attrib["heart_rate_bpm"]))
                         if "active_calories_kcal" in attrib:
-                            cal = float(attrib["active_calories_kcal"])
+                            cal_samples.append(float(attrib["active_calories_kcal"]))
                         if "fatigue_state" in attrib:
                             f_state = attrib["fatigue_state"]
+                        if "hrv_sdnn_ms" in attrib:
+                            hrv_samples.append(float(attrib["hrv_sdnn_ms"]))
 
+                        # Standard Apple HealthKit <Workout> element
+                        if tag == "workout":
+                            if "workoutactivitytype" in attrib:
+                                workout_type = elem.attrib.get("workoutActivityType", workout_type)
+                            if "duration" in attrib:
+                                try:
+                                    duration_min = round(float(attrib["duration"]), 1)
+                                except ValueError:
+                                    pass
+                            if "totalenergyburned" in attrib:
+                                try:
+                                    cal_samples.append(float(attrib["totalenergyburned"]))
+                                except ValueError:
+                                    pass
+
+                        # Standard Apple HealthKit <WorkoutStatistics> element
+                        if tag == "workoutstatistics":
+                            stat_type = attrib.get("type", "").lower()
+                            if "heartrate" in stat_type:
+                                if "average" in attrib:
+                                    hr_samples.append(float(attrib["average"]))
+                                if "maximum" in attrib:
+                                    peak_hr = max(peak_hr or 0.0, float(attrib["maximum"]))
+                            elif "activeenergyburned" in stat_type and "sum" in attrib:
+                                cal_samples.append(float(attrib["sum"]))
+
+                        # Standard Apple HealthKit <Record> or custom tags
                         rec_type = attrib.get("type", "").lower()
                         val = attrib.get("value") or (elem.text.strip() if elem.text else None)
                         if val:
                             try:
-                                if "heartrate" in rec_type or tag in ("heart_rate_bpm", "heartrate"):
-                                    hr = float(val)
+                                num_val = float(val)
+                                if "heartratevariabilitysdnn" in rec_type or tag in ("hrv_sdnn_ms", "hrv"):
+                                    hrv_samples.append(num_val)
+                                elif "restingheartrate" in rec_type or tag == "resting_heart_rate_bpm":
+                                    resting_samples.append(num_val)
+                                elif "heartrate" in rec_type or tag in ("heart_rate_bpm", "heartrate"):
+                                    hr_samples.append(num_val)
                                 elif "activeenergyburned" in rec_type or tag in (
                                     "active_calories_kcal",
                                     "activecalories",
                                 ):
-                                    cal = float(val)
-                                elif tag in ("fatigue_state", "fatiguestate"):
-                                    f_state = val
+                                    cal_samples.append(num_val)
                             except ValueError:
-                                pass
+                                if tag in ("fatigue_state", "fatiguestate"):
+                                    f_state = val
+
+                    if hr_samples:
+                        hr = sum(hr_samples) / len(hr_samples)
+                        peak_hr = max(peak_hr or 0.0, max(hr_samples))
+                    if resting_samples:
+                        resting_hr = sum(resting_samples) / len(resting_samples)
+                    if hrv_samples:
+                        hrv_sdnn_ms = sum(hrv_samples) / len(hrv_samples)
+                    if cal_samples:
+                        cal = max(cal_samples) if len(cal_samples) == 1 else sum(cal_samples)
                 except Exception:
                     pass
 
     final_hr = round(hr if hr is not None else 168.0, 1)
+    final_peak_hr = round(peak_hr if peak_hr is not None else max(final_hr + 8.0, 174.0), 1)
+    final_resting_hr = round(resting_hr if resting_hr is not None else 58.0, 1)
+    final_hrv = round(hrv_sdnn_ms if hrv_sdnn_ms is not None else (24.5 if final_hr >= 170.0 else 48.0), 1)
     final_cal = round(cal if cal is not None else 420.0, 1)
-    final_fatigue = _derive_fatigue_state(final_hr, final_cal, f_state)
+    final_duration = round(duration_min if duration_min is not None else 45.0, 1)
+    final_wrist_speed = round(wrist_speed_mps if wrist_speed_mps is not None else 28.4, 1)
+
+    final_fatigue = _derive_fatigue_state(
+        heart_rate_bpm=final_hr,
+        active_calories_kcal=final_cal,
+        explicit_state=f_state,
+        hrv_sdnn_ms=final_hrv,
+    )
+    fatigue_index = _compute_fatigue_index(
+        heart_rate_bpm=final_hr,
+        active_calories_kcal=final_cal,
+        hrv_sdnn_ms=final_hrv,
+    )
 
     return {
         "heart_rate_bpm": final_hr,
+        "peak_heart_rate_bpm": final_peak_hr,
+        "resting_heart_rate_bpm": final_resting_hr,
+        "hrv_sdnn_ms": final_hrv,
         "active_calories_kcal": final_cal,
+        "workout_duration_min": final_duration,
+        "wrist_acceleration_peak_mps": final_wrist_speed,
+        "workout_activity_type": workout_type,
+        "fatigue_index": fatigue_index,
         "fatigue_state": final_fatigue,
+        "source_format": source_format,
     }
+
