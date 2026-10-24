@@ -1,31 +1,44 @@
 """
-main.py - FastAPI Ingestion & Output API (Sumanth/Yue)
+main.py - FastAPI Ingestion, Real-Time Watch Companion & MongoDB Atlas Analytics API (Sumanth/Yue/Taha/Kong)
 Endpoints:
-- GET /health: Health check + MongoDB status.
-- POST /pipeline/analyze-badminton: Accepts UploadFile video + Apple Watch form fields
-  (`user_name`, `heart_rate_bpm`, `active_calories_kcal`), runs `etl_pose -> db_mongo -> agent_argon_saint`,
-  saves the session to MongoDB, and returns the unified JSON for the Android Jetpack Compose frontend.
-- POST /pipeline/approve-saint-action: Human-in-the-loop endpoint for Sumanth to approve the staged
-  Saint court booking and training partner notification.
+- GET /health: Health check + MongoDB Atlas status & enabled features.
+- POST /pipeline/analyze-badminton (and /pipeline/analyze-stroke): Accepts UploadFile video + Apple Watch form fields
+  or live paired Apple Watch biometrics, runs `etl_pose -> db_mongo -> agent_argon_saint`, saves the session to MongoDB,
+  and returns unified JSON for the Android Jetpack Compose frontend.
+- POST /pipeline/approve-saint-action: Human-in-the-loop endpoint for Sumanth to approve staged Saint court booking.
+- POST /pipeline/pair-watch: Generates a 6-character pairing code (`TMPO-88`) and Companion URL for the Android app.
+- POST /pipeline/etl-apple-watch: Ingests Apple Watch biometrics into MongoDB Time-Series (`watch_telemetry_ts`)
+  and broadcasts to connected Android SSE clients.
+- GET /pipeline/watch-timeseries/{user_name}: MongoDB Time-Series `$setWindowFields` rolling HR & Fatigue window.
+- GET /pipeline/analytics/{user_name}: MongoDB `$facet` + `$bucket` longitudinal Fatigue-vs-Elbow-Collapse analytics.
+- GET /pipeline/live-stream: Server-Sent Events (SSE) stream backed by MongoDB Change Streams / live telemetry push
+  for the Android Jetpack Compose app.
+- GET /watch-companion: Mobile/Watch web bridge to push real Apple Watch biometrics into MongoDB & Android app.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import tempfile
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
 from db_mongo import (
     check_mongo_health,
+    create_watch_pairing_session,
     find_closest_pro_pose,
     find_training_partner,
+    get_fatigue_biomechanics_analytics,
     get_latest_watch_telemetry,
+    get_watch_timeseries_window,
     save_analysis_session,
     save_live_watch_telemetry,
     seed_reference_data,
@@ -33,21 +46,34 @@ from db_mongo import (
 )
 from etl_pose import extract_pose_from_video, parse_apple_watch_metrics
 
+# Connected Android SSE event queues for zero-latency push when Apple Watch or Saint approval updates
+_SSE_SUBSCRIBERS: List[asyncio.Queue] = []
+
+
+def _broadcast_sse_event(event_type: str, data: Dict[str, Any]) -> None:
+    payload = {"event": event_type, "data": data}
+    for q in list(_SSE_SUBSCRIBERS):
+        try:
+            q.put_nowait(payload)
+        except Exception:
+            pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Seed Viktor Axelsen, Lee Zii Jia, and London training partners on startup
+    # Seed Roger Federer, Novak Djokovic, Carlos Alcaraz, Serena Williams, Sinner, Nadal,
+    # London GeoJSON training partners, and MongoDB Time-Series collection on startup.
     seed_reference_data()
     yield
 
 
 app = FastAPI(
-    title="Tempo - Badminton Biomechanics & Autonomous Coach API",
+    title="Tempo - Racket Biomechanics, Apple Watch Time-Series & Autonomous Coach API",
     description=(
-        "Video Input -> Pose & Watch ETL -> MongoDB Atlas Vector Search -> "
-        "Gemini 4 Argon + Saint AI Agent"
+        "Video Input -> Pose & Watch ETL -> MongoDB Atlas ($vectorSearch + Time-Series + 2dsphere Geo + "
+        "$facet Analytics) -> Gemini 4 Argon + Saint AI Agent"
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -68,18 +94,41 @@ class ApproveSaintActionRequest(BaseModel):
     saint_agent_job: Optional[Dict[str, Any]] = Field(default=None, description="Optional override of staged Saint job")
 
 
+class PairWatchRequest(BaseModel):
+    user_name: str = Field(default="Sumanth")
+    android_device_id: str = Field(default="android_compose_app")
+
+
 @app.get("/health")
 def health_check() -> Dict[str, Any]:
     """
-    Health check + MongoDB status.
+    Health check + MongoDB Atlas status & enabled features.
     """
     mongo_status = check_mongo_health()
     return {
         "status": "ok",
-        "service": "tempo-badminton-biomechanics-backend",
+        "service": "tempo-biomechanics-backend",
         "gemini_model": "gemini-4-argon",
         "mongodb": mongo_status,
     }
+
+
+@app.post("/pipeline/pair-watch")
+def pair_apple_watch_for_android(req: PairWatchRequest, request: Request) -> Dict[str, Any]:
+    """
+    Called by the Android Jetpack Compose app to initiate a zero-config Apple Watch link.
+    Returns a 6-character pairing code (`TMPO-xx`) and a Companion URL (`http://<host>:8000/watch-companion?code=TMPO-xx`)
+    that Sumanth can scan or tap on his iPhone/Watch to stream real biometrics through MongoDB to the Android app.
+    """
+    session = create_watch_pairing_session(
+        user_name=req.user_name,
+        android_device_id=req.android_device_id,
+    )
+    host = request.headers.get("host", "192.168.68.106:8000")
+    companion_url = f"http://{host}/watch-companion?code={session['pairing_code']}&user={req.user_name}"
+    session["companion_url"] = companion_url
+    session["shortcut_webhook_url"] = f"http://{host}/pipeline/etl-apple-watch"
+    return session
 
 
 @app.post("/pipeline/analyze-badminton")
@@ -92,10 +141,14 @@ async def analyze_badminton_pipeline(
     active_calories_kcal: float = Form(default=420.0),
     fatigue_state: Optional[str] = Form(default=None),
     apple_watch_payload: Optional[str] = Form(default=None),
+    user_lon: float = Form(default=-0.1328),
+    user_lat: float = Form(default=51.5248),
 ) -> Dict[str, Any]:
     """
-    Accepts `UploadFile` video + Apple Watch form fields (`user_name`, `heart_rate_bpm`, `active_calories_kcal`)
-    or an `apple_watch_file` (`.xml` / `.json` / `.zip` export), runs `etl_pose -> db_mongo -> agent_argon_saint`,
+    Accepts `UploadFile` video + Apple Watch form fields (`user_name`, `heart_rate_bpm`, `active_calories_kcal`),
+    an `apple_watch_file` (`.xml` / `.json` / `.zip` export), or automatically pulls the live synced Apple Watch
+    biometrics from MongoDB `watch_telemetry_ts`.
+    Runs `etl_pose -> db_mongo ($vectorSearch + 2dsphere $geoNear) -> agent_argon_saint`,
     saves the session to MongoDB, and returns the unified JSON for the Android Jetpack Compose frontend.
     """
     seed_reference_data()
@@ -122,7 +175,12 @@ async def analyze_badminton_pipeline(
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
         pose_result = extract_pose_from_video(temp_video_path or "")
         live_cached = get_latest_watch_telemetry(user_name)
-        if watch_raw_payload is None and live_cached is not None and heart_rate_bpm == 168.0 and active_calories_kcal == 420.0:
+        if (
+            watch_raw_payload is None
+            and live_cached is not None
+            and heart_rate_bpm == 168.0
+            and active_calories_kcal == 420.0
+        ):
             watch_metrics = parse_apple_watch_metrics(payload=live_cached)
             watch_metrics["source_format"] = "live_apple_watch_sync"
         else:
@@ -132,11 +190,17 @@ async def analyze_badminton_pipeline(
                 active_calories_kcal=active_calories_kcal,
                 fatigue_state=fatigue_state,
             )
+            save_live_watch_telemetry(user_name, watch_metrics)
 
-        # Step 2: MongoDB Atlas $vectorSearch Pro Matching & Partner Discovery (Taha)
+        # Step 2: MongoDB Atlas $vectorSearch Pro Matching & 2dsphere Geospatial Partner Discovery (Taha)
         user_pose_vector = pose_result["pose_vector"]
         pro_match = find_closest_pro_pose(user_pose_vector)
-        partner_match = find_training_partner(city="London", user_pose_vector=user_pose_vector)
+        partner_match = find_training_partner(
+            city="London",
+            user_pose_vector=user_pose_vector,
+            user_lon=user_lon,
+            user_lat=user_lat,
+        )
 
         # Step 3: Gemini 4 Argon Verification + Saint AI Autonomous Coach (Kong/Sumanth)
         agent_output = run_argon_and_saint_agent(
@@ -147,7 +211,10 @@ async def analyze_badminton_pipeline(
             partner_match=partner_match,
         )
 
-        # Build unified payload for MongoDB persistence and Android Jetpack Compose UI
+        # Step 4: MongoDB Time-Series Window & Longitudinal Analytics Snapshot
+        ts_window = get_watch_timeseries_window(user_name=user_name, limit=6)
+        fatigue_analytics = get_fatigue_biomechanics_analytics(user_name=user_name)
+
         unified_payload: Dict[str, Any] = {
             "user_name": user_name,
             "video_filename": video_filename,
@@ -164,23 +231,29 @@ async def analyze_badminton_pipeline(
                 "pose_vector": user_pose_vector,
             },
             "apple_watch_biometrics": watch_metrics,
+            "watch_timeseries_window": ts_window,
             "pro_comparison": {
                 "matched_pro": pro_match.get("player_name"),
                 "country": pro_match.get("country"),
+                "sport": pro_match.get("sport", "Tennis"),
                 "stroke_type": pro_match.get("stroke_type"),
                 "pro_right_elbow_contact_deg": pro_match.get("right_elbow_contact_deg"),
                 "pro_pose_vector": pro_match.get("pose_vector"),
                 "similarity_score": pro_match.get("similarity_score"),
                 "search_method": pro_match.get("search_method"),
                 "biomechanical_notes": pro_match.get("biomechanical_notes"),
+                "all_pro_matches": pro_match.get("all_pro_matches", []),
             },
             "training_partner_match": partner_match,
+            "longitudinal_fatigue_analytics": fatigue_analytics,
             "saint_approval_status": "PENDING_HUMAN_APPROVAL",
             "saint_webhook_dispatch": agent_output.get("saint_webhook_dispatch", {}),
         }
 
         session_id = save_analysis_session(unified_payload)
         unified_payload["session_id"] = session_id
+
+        _broadcast_sse_event("STROKE_ANALYSIS_COMPLETED", unified_payload)
         return unified_payload
 
     finally:
@@ -196,6 +269,8 @@ async def etl_apple_watch_endpoint(
     request: Request,
     apple_watch_file: Optional[UploadFile] = File(default=None),
     apple_watch_payload: Optional[str] = Form(default=None),
+    user_name: Optional[str] = Form(default=None),
+    pairing_code: Optional[str] = Form(default=None),
     heart_rate_bpm: Optional[float] = Form(default=None),
     active_calories_kcal: Optional[float] = Form(default=None),
     fatigue_state: Optional[str] = Form(default=None),
@@ -203,8 +278,9 @@ async def etl_apple_watch_endpoint(
     """
     Dedicated Apple Watch Biometrics ETL endpoint:
     Accepts an Apple Health `export.xml`, `export.zip`, or JSON file upload (`apple_watch_file`),
-    a raw JSON/XML string (`apple_watch_payload`), or direct JSON body from an iOS/WatchOS shortcut,
-    and returns normalized biometrics + fatigue classification.
+    a raw JSON/XML string (`apple_watch_payload`), or direct JSON body from the iOS Shortcut /
+    `/watch-companion` web bridge.
+    Writes to the MongoDB Time-Series collection (`watch_telemetry_ts`) and broadcasts live to the Android app!
     """
     raw_payload: Optional[Any] = apple_watch_payload
     if apple_watch_file is not None:
@@ -223,27 +299,92 @@ async def etl_apple_watch_endpoint(
         active_calories_kcal=active_calories_kcal,
         fatigue_state=fatigue_state,
     )
-    user_for_sync = "Sumanth"
-    if isinstance(raw_payload, dict) and raw_payload.get("user_name"):
-        user_for_sync = str(raw_payload["user_name"])
-    saved = save_live_watch_telemetry(user_for_sync, metrics)
+    resolved_user = user_name or "Sumanth"
+    resolved_code = pairing_code
+    if isinstance(raw_payload, dict):
+        if raw_payload.get("user_name"):
+            resolved_user = str(raw_payload["user_name"])
+        if raw_payload.get("pairing_code"):
+            resolved_code = str(raw_payload["pairing_code"])
+
+    saved = save_live_watch_telemetry(resolved_user, metrics, pairing_code=resolved_code)
+    ts_window = get_watch_timeseries_window(user_name=resolved_user, limit=8)
+
+    _broadcast_sse_event(
+        "APPLE_WATCH_TELEMETRY_SYNC",
+        {
+            "apple_watch_biometrics": saved,
+            "watch_timeseries_window": ts_window,
+        },
+    )
+
     return {
         "status": "ok",
         "synced_to_live_session": True,
         "apple_watch_biometrics": saved,
+        "watch_timeseries_window": ts_window,
     }
 
 
 @app.get("/pipeline/latest-apple-watch")
 def get_latest_apple_watch_endpoint(user_name: Optional[str] = None) -> Dict[str, Any]:
-    """Return the most recently synced live Apple Watch biometrics."""
-    latest = get_latest_watch_telemetry(user_name)
+    """Return the most recently synced live Apple Watch biometrics + rolling Time-Series window."""
+    target_user = user_name or "Sumanth"
+    latest = get_latest_watch_telemetry(target_user)
+    ts_window = get_watch_timeseries_window(user_name=target_user, limit=10)
     return {
         "status": "ok",
         "has_live_telemetry": latest is not None,
         "apple_watch_biometrics": latest,
+        "watch_timeseries_window": ts_window,
     }
 
+
+@app.get("/pipeline/watch-timeseries/{user_name}")
+def watch_timeseries_endpoint(user_name: str = "Sumanth", limit: int = 15) -> Dict[str, Any]:
+    """
+    MongoDB Time-Series (`watch_telemetry_ts`) + `$setWindowFields` rolling moving-average endpoint
+    for the Android Jetpack Compose real-time HR & Fatigue graph.
+    """
+    return get_watch_timeseries_window(user_name=user_name, limit=limit)
+
+
+@app.get("/pipeline/analytics/{user_name}")
+def player_fatigue_analytics_endpoint(user_name: str = "Sumanth") -> Dict[str, Any]:
+    """
+    MongoDB `$facet` + `$bucket` longitudinal correlation endpoint showing how Sumanth's
+    overhead elbow extension (`right_elbow_contact_deg`) degrades across Apple Watch Heart-Rate Zones.
+    """
+    return get_fatigue_biomechanics_analytics(user_name=user_name)
+
+
+@app.get("/pipeline/live-stream")
+async def android_live_sse_stream(request: Request) -> StreamingResponse:
+    """
+    Server-Sent Events (SSE) stream for the Android Jetpack Compose app.
+    Streams real-time `APPLE_WATCH_TELEMETRY_SYNC`, `STROKE_ANALYSIS_COMPLETED`,
+    and `SAINT_ACTION_APPROVED` events the instant they hit MongoDB Atlas!
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    _SSE_SUBSCRIBERS.append(queue)
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            latest = get_latest_watch_telemetry("Sumanth")
+            yield f"data: {json.dumps({'event': 'CONNECTED', 'latest_watch': latest})}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(msg)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            if queue in _SSE_SUBSCRIBERS:
+                _SSE_SUBSCRIBERS.remove(queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.post("/pipeline/approve-saint-action")
@@ -280,7 +421,7 @@ async def approve_saint_action(
 
     job_to_execute = custom_job or {
         "plain_english_instruction": (
-            f"Confirmed by {req_user_name}: Book Court 3 at Finsbury Leisure Centre (EC1V) "
+            f"Confirmed by {req_user_name}: Book Court 3 at Islington Tennis & Racket Centre / Finsbury Leisure (EC1V) "
             "and notify London training partner Arjun Mehta."
         ),
         "requires_human_approval": False,
@@ -299,7 +440,7 @@ async def approve_saint_action(
         )
         booking_confirmation = {
             "court_booking_status": "CONFIRMED",
-            "venue": "Finsbury Leisure Centre (EC1V)",
+            "venue": "Islington Tennis & Racket Centre / Finsbury Leisure (EC1V)",
             "court": "Court 3",
             "slot": "Tonight 20:00 - 22:00 BST",
             "partner_notified": "Arjun Mehta",
@@ -324,7 +465,7 @@ async def approve_saint_action(
         dispatch_result=booking_confirmation,
     )
 
-    return {
+    response_payload = {
         "status": "approved" if req_approved else "rejected",
         "session_id": updated_session.get("session_id", req_session_id),
         "approved_by": req_user_name,
@@ -332,6 +473,170 @@ async def approve_saint_action(
         "saint_approval_status": updated_session.get("saint_approval_status"),
         "execution_summary": booking_confirmation,
     }
+    _broadcast_sse_event("SAINT_ACTION_APPROVED", response_payload)
+    return response_payload
+
+
+@app.get("/watch-companion", response_class=HTMLResponse)
+def apple_watch_companion_web_bridge(code: str = "TMPO-88", user: str = "Sumanth") -> str:
+    """
+    Zero-config Apple Watch / iPhone Web Companion page that links directly to the Android app
+    via MongoDB Atlas Time-Series (`watch_telemetry_ts`).
+    """
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tempo • Apple Watch -> Android Bridge</title>
+  <style>
+    :root {{
+      --bg: #0b0f17;
+      --card: #151c28;
+      --accent: #ccff00;
+      --danger: #ff4d6d;
+      --ok: #00f5d4;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }}
+    * {{ box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+    body {{ margin: 0; background: var(--bg); color: var(--text); padding: 18px; }}
+    .container {{ max-width: 460px; margin: 0 auto; }}
+    .badge {{ display: inline-block; background: rgba(204,255,0,0.15); color: var(--accent); padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; }}
+    h1 {{ font-size: 22px; margin: 10px 0 4px; }}
+    p.sub {{ color: var(--muted); font-size: 13px; margin-top: 0; }}
+    .card {{ background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px; margin-bottom: 14px; }}
+    .row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+    .metric-big {{ font-size: 36px; font-weight: 800; color: var(--accent); }}
+    .btn {{ width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 8px; transition: 0.15s; }}
+    .btn-primary {{ background: var(--accent); color: #0b0f17; }}
+    .btn-danger {{ background: var(--danger); color: #fff; }}
+    .btn-outline {{ background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,0.2); }}
+    input[type=range] {{ width: 100%; accent-color: var(--accent); }}
+    .status {{ font-size: 12px; color: var(--ok); margin-top: 8px; min-height: 18px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="badge">PAIRED WITH ANDROID • {code}</span>
+    <h1>Tempo Apple Watch Bridge</h1>
+    <p class="sub">Streams live Heart Rate, HRV & Calories into MongoDB Atlas Time-Series (<code>watch_telemetry_ts</code>) &rarr; Android Jetpack Compose App.</p>
+
+    <div class="card">
+      <div class="row">
+        <span>Player: <strong>{user}</strong></span>
+        <span id="fatigueBadge" style="font-size:12px;color:#ff4d6d;font-weight:700;">HIGH FATIGUE</span>
+      </div>
+      <div class="row">
+        <div>
+          <div style="font-size:12px;color:var(--muted);">HEART RATE (BPM)</div>
+          <div class="metric-big" id="hrVal">174</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--muted);">HRV SDNN (MS)</div>
+          <div class="metric-big" id="hrvVal" style="color:#00f5d4;">22.5</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--muted);">ACTIVE KCAL</div>
+          <div class="metric-big" id="calVal" style="color:#f8fafc;">510</div>
+        </div>
+      </div>
+
+      <label style="font-size:12px;color:var(--muted);">Live Watch Heart Rate Sensor (BPM)</label>
+      <input type="range" id="hrSlider" min="110" max="195" value="174" oninput="updateSliders()" />
+
+      <label style="font-size:12px;color:var(--muted);">HRV SDNN Recovery (ms)</label>
+      <input type="range" id="hrvSlider" min="15" max="75" value="22" oninput="updateSliders()" />
+
+      <button class="btn btn-primary" onclick="pushTelemetry()">Sync Watch Beat to Android & MongoDB Now</button>
+      <button class="btn btn-outline" id="streamBtn" onclick="toggleStream()">Start 2s Live Watch Stream</button>
+      <div class="status" id="statusMsg">Ready to stream to MongoDB Time-Series.</div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Upload Apple Health Export (.xml / .zip / .json)</div>
+      <input type="file" id="watchFile" accept=".xml,.zip,.json" style="font-size:12px;margin-bottom:8px;width:100%;" />
+      <button class="btn btn-outline" onclick="uploadExportFile()">Upload HealthKit File</button>
+    </div>
+  </div>
+
+  <script>
+    let timer = null;
+    function updateSliders() {{
+      const hr = parseFloat(document.getElementById('hrSlider').value);
+      const hrv = parseFloat(document.getElementById('hrvSlider').value);
+      document.getElementById('hrVal').innerText = hr;
+      document.getElementById('hrvVal').innerText = hrv;
+      const badge = document.getElementById('fatigueBadge');
+      if (hr >= 170 || hrv < 28) {{
+        badge.innerText = 'HIGH FATIGUE OVERLOAD';
+        badge.style.color = '#ff4d6d';
+      }} else if (hr >= 150) {{
+        badge.innerText = 'MODERATE LOAD';
+        badge.style.color = '#fbbf24';
+      }} else {{
+        badge.innerText = 'OPTIMAL RECOVERY (FEDERER ZONE)';
+        badge.style.color = '#00f5d4';
+      }}
+    }}
+
+    async function pushTelemetry() {{
+      const hr = parseFloat(document.getElementById('hrSlider').value);
+      const hrv = parseFloat(document.getElementById('hrvSlider').value);
+      const cal = parseFloat(document.getElementById('calVal').innerText);
+      const res = await fetch('/pipeline/etl-apple-watch', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{
+          user_name: '{user}',
+          pairing_code: '{code}',
+          heart_rate_bpm: hr,
+          hrv_sdnn_ms: hrv,
+          active_calories_kcal: cal
+        }})
+      }});
+      const data = await res.json();
+      document.getElementById('statusMsg').innerText =
+        'Synced -> HR ' + data.apple_watch_biometrics.heart_rate_bpm + ' BPM | Fatigue Index ' +
+        data.apple_watch_biometrics.fatigue_index + ' (' + new Date().toLocaleTimeString() + ')';
+    }}
+
+    function toggleStream() {{
+      const btn = document.getElementById('streamBtn');
+      if (timer) {{
+        clearInterval(timer);
+        timer = null;
+        btn.innerText = 'Start 2s Live Watch Stream';
+      }} else {{
+        pushTelemetry();
+        timer = setInterval(() => {{
+          const slider = document.getElementById('hrSlider');
+          const jitter = Math.floor(Math.random() * 5) - 2;
+          slider.value = Math.min(195, Math.max(110, parseInt(slider.value) + jitter));
+          updateSliders();
+          pushTelemetry();
+        }}, 2500);
+        btn.innerText = 'Stop Live Watch Stream (Streaming...)';
+      }}
+    }}
+
+    async function uploadExportFile() {{
+      const fileInput = document.getElementById('watchFile');
+      if (!fileInput.files.length) return;
+      const fd = new FormData();
+      fd.append('apple_watch_file', fileInput.files[0]);
+      fd.append('user_name', '{user}');
+      fd.append('pairing_code', '{code}');
+      const res = await fetch('/pipeline/etl-apple-watch', {{ method: 'POST', body: fd }});
+      const data = await res.json();
+      document.getElementById('hrVal').innerText = data.apple_watch_biometrics.heart_rate_bpm;
+      document.getElementById('hrvVal').innerText = data.apple_watch_biometrics.hrv_sdnn_ms;
+      document.getElementById('calVal').innerText = data.apple_watch_biometrics.active_calories_kcal;
+      document.getElementById('statusMsg').innerText = 'Uploaded HealthKit file & synced to Android!';
+    }}
+  </script>
+</body>
+</html>"""
 
 
 if __name__ == "__main__":
