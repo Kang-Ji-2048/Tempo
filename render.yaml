@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: tempo-watch-receiver
+    runtime: docker
+    plan: free
+    dockerfilePath: ./watch_receiver/Dockerfile
+    dockerContext: ./watch_receiver
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: TEMPO_WRITE_KEY
+        generateValue: true
+      - key: TEMPO_READ_KEY
+        generateValue: true
