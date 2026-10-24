@@ -771,6 +771,347 @@ def live_laptop_dashboard() -> str:
 </html>"""
 
 
+@app.get("/architecture", response_class=HTMLResponse)
+def pitch_deck_architecture_diagram() -> str:
+    """
+    Pitch-ready, high-contrast interactive SVG + HTML architecture diagram at
+    `http://localhost:8000/architecture` designed for hackathon slides & live judge demos.
+    """
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tempo • System Architecture & Bounty Pipeline</title>
+  <style>
+    :root {
+      --bg: #060911;
+      --panel: #0e1525;
+      --card: #141e33;
+      --lime: #ccff00;
+      --cyan: #00f5d4;
+      --mongo: #00ed64;
+      --gemini: #60a5fa;
+      --saint: #f472b6;
+      --danger: #ff4d6d;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 15% 15%, #111c35 0%, var(--bg) 60%);
+      color: var(--text);
+      padding: 28px 36px;
+      min-height: 100vh;
+    }
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 16px;
+    }
+    .title-block h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, #ffffff, #ccff00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .title-block p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .bounty-pills {
+      display: flex;
+      gap: 10px;
+    }
+    .pill {
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .pill-gemini { background: rgba(96,165,250,0.14); color: var(--gemini); border: 1px solid rgba(96,165,250,0.45); }
+    .pill-mongo { background: rgba(0,237,100,0.14); color: var(--mongo); border: 1px solid rgba(0,237,100,0.45); }
+    .pill-saint { background: rgba(244,114,182,0.14); color: var(--saint); border: 1px solid rgba(244,114,182,0.45); }
+
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: 1fr 44px 1.15fr 44px 1.35fr 44px 1.2fr;
+      align-items: stretch;
+      gap: 0;
+    }
+    .stage-col {
+      background: rgba(14, 21, 37, 0.85);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 18px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+    }
+    .stage-col.mongo-col { border-color: rgba(0,237,100,0.4); box-shadow: 0 0 35px rgba(0,237,100,0.08); }
+    .stage-col.ai-col { border-color: rgba(96,165,250,0.4); box-shadow: 0 0 35px rgba(96,165,250,0.08); }
+
+    .stage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding-bottom: 10px;
+    }
+    .stage-num {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(204,255,0,0.15);
+      color: var(--lime);
+    }
+    .stage-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+    .node-card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 13px 14px;
+      position: relative;
+    }
+    .node-card h3 {
+      margin: 0 0 5px;
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .node-card p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .code-tag {
+      display: inline-block;
+      margin-top: 7px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: rgba(0,0,0,0.45);
+      color: var(--cyan);
+      border: 1px solid rgba(0,245,212,0.25);
+    }
+    .arrow-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: var(--lime);
+      font-size: 24px;
+      font-weight: 900;
+    }
+    .arrow-label {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-top: 8px;
+      text-transform: uppercase;
+    }
+    .bottom-loop {
+      margin-top: 20px;
+      background: linear-gradient(90deg, rgba(20,30,51,0.9), rgba(28,20,48,0.9));
+      border: 1px solid rgba(244,114,182,0.35);
+      border-radius: 14px;
+      padding: 14px 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .loop-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 10px var(--lime);
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <div class="title-block">
+      <h1>TEMPO • MULTIMODAL RACKET BIOMECHANICS &amp; AUTONOMOUS COACH</h1>
+      <p>End-to-End Architecture: Video &amp; Apple Watch HealthKit &rarr; MongoDB Atlas Multi-Engine &rarr; Gemini 4 Argon + Saint AI Agent</p>
+    </div>
+    <div class="bounty-pills">
+      <span class="pill pill-gemini">Bounty 1 • Gemini 4 Argon</span>
+      <span class="pill pill-mongo">Bounty 2 • MongoDB Atlas (5 Engines)</span>
+      <span class="pill pill-saint">Bounty 3 • Saint AI HITL Agent</span>
+    </div>
+  </div>
+
+  <div class="pipeline-grid">
+    <!-- STAGE 1: EDGE CAPTURE -->
+    <div class="stage-col">
+      <div class="stage-header">
+        <span class="stage-title">1. Edge Capture</span>
+        <span class="stage-num">user_1</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--danger);">
+        <h3>⌚ Apple Watch HealthKit</h3>
+        <p>Streams live Heart Rate (BPM), HRV SDNN (ms), &amp; Active Calories via iOS Shortcut or <code>export.zip</code>.</p>
+        <span class="code-tag">POST /pipeline/etl-apple-watch</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--lime);">
+        <h3>🎥 Overhead Stroke Video</h3>
+        <p>High-fps smartphone <code>.mp4</code> capture of overhead serve / smash + live London GPS coordinates.</p>
+        <span class="code-tag">POST /pipeline/analyze-stroke</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--cyan);">
+        <h3>📱 Android Jetpack Compose</h3>
+        <p>Native Kotlin UI with Retrofit + OkHttp Server-Sent Events (SSE) for real-time watch &amp; coach cards.</p>
+        <span class="code-tag">TempoApiClient.kt</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div>&rarr;</div>
+      <div class="arrow-label">Multipart + JSON</div>
+    </div>
+
+    <!-- STAGE 2: FASTAPI + MULTIMODAL ETL -->
+    <div class="stage-col">
+      <div class="stage-header">
+        <span class="stage-title">2. Multimodal ETL</span>
+        <span class="stage-num">etl_pose.py</span>
+      </div>
+
+      <div class="node-card">
+        <h3>🦴 MediaPipe 3D Pose Extraction</h3>
+        <p>Scans frames to isolate peak overhead contact (<code>min RIGHT_WRIST.y</code>) &amp; computes 5 3D joint angles + normalized reach height.</p>
+        <span class="code-tag">6D pose_vector [0..1]</span>
+      </div>
+
+      <div class="node-card">
+        <h3>❤️ Biometrics &amp; Fatigue Index</h3>
+        <p>Normalizes HealthKit XML/ZIP/JSON into a <code>[0-100]</code> Fatigue Index &amp; classifies aerobic load state.</p>
+        <span class="code-tag">HIGH_FATIGUE_AEROBIC_OVERLOAD</span>
+      </div>
+
+      <div class="node-card" style="border: 1px solid rgba(204,255,0,0.4);">
+        <h3>🎯 Deterministic Verification Gate</h3>
+        <p>Hard biomechanical Pass/Fail loop before LLM reasoning:</p>
+        <span class="code-tag" style="color:var(--lime);">right_elbow_contact_deg &gt;= 165.0°</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div>&rarr;</div>
+      <div class="arrow-label">6D Vector + 1Hz TS</div>
+    </div>
+
+    <!-- STAGE 3: MONGODB ATLAS -->
+    <div class="stage-col mongo-col">
+      <div class="stage-header">
+        <span class="stage-title" style="color:var(--mongo);">3. MongoDB Atlas</span>
+        <span class="stage-num" style="background:rgba(0,237,100,0.15);color:var(--mongo);">db_mongo.py</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--mongo);">
+        <h3>🔍 Atlas $vectorSearch</h3>
+        <p>Matches <code>user_1</code>'s 6D pose vector against Tennis GOATs: <strong>Roger Federer (176.5°)</strong>, <strong>Serena (175.5°)</strong>, <strong>Djokovic (174.0°)</strong>, <strong>Alcaraz</strong>, <strong>Sinner</strong> &amp; <strong>Nadal</strong>.</p>
+        <span class="code-tag">index: pose_vector_index (cosine)</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--mongo);">
+        <h3>⏱️ Time-Series + $setWindowFields</h3>
+        <p>Stores 1Hz Apple Watch beats in <code>watch_telemetry_ts</code> &amp; computes 3-sample rolling average HR &amp; Fatigue.</p>
+        <span class="code-tag">collection: watch_telemetry_ts</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--mongo);">
+        <h3>📍 2dsphere $geoNear Partner Match</h3>
+        <p>Hybrid rank (75% vector compatibility + 25% distance in km) across London courts (UCL, Finsbury, Regent's Park).</p>
+        <span class="code-tag">location_2dsphere_idx</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--mongo);">
+        <h3>📊 Longitudinal $facet + $bucket</h3>
+        <p>Correlates HR Zones (&lt;145, 145-165, &gt;165 BPM) against <strong>-18.4° fatigue-induced elbow drop</strong>.</p>
+        <span class="code-tag">GET /pipeline/analytics/user_1</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div>&rarr;</div>
+      <div class="arrow-label">Context + Pro Match</div>
+    </div>
+
+    <!-- STAGE 4: GEMINI 4 ARGON + SAINT AI -->
+    <div class="stage-col ai-col">
+      <div class="stage-header">
+        <span class="stage-title" style="color:var(--gemini);">4. Argon + Saint AI</span>
+        <span class="stage-num" style="background:rgba(96,165,250,0.15);color:var(--gemini);">agent_argon_saint.py</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--gemini);">
+        <h3>✨ Google Gemini 4 Argon</h3>
+        <p>Synthesizes 3D joint angles, Apple Watch HRV/HR fatigue, &amp; Federer/Djokovic reference into a structured diagnosis &amp; live drill prescription.</p>
+        <span class="code-tag">client.interactions.create(thinking_level="high")</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--saint);">
+        <h3>🤖 Saint AI Autonomous Agent</h3>
+        <p>Stages proactive training notification, London Court 3 reservation &amp; partner invite for <code>user_1</code>.</p>
+        <span class="code-tag" style="color:var(--saint);">requires_human_approval: true</span>
+      </div>
+
+      <div class="node-card" style="border-left: 3px solid var(--lime);">
+        <h3>✅ Human-in-the-Loop Execution</h3>
+        <p>Holds external court booking until <code>user_1</code> taps <strong>Approve</strong> on Android, then dispatches <code>SAINT_WEBHOOK_URL</code>.</p>
+        <span class="code-tag">POST /pipeline/approve-saint-action</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-loop">
+    <div class="loop-step">
+      <span class="dot"></span>
+      <span><strong>Real-Time Closed Loop:</strong> MongoDB Atlas &amp; FastAPI broadcast live events via <code>GET /pipeline/live-stream</code> (SSE) &rarr; Android Jetpack Compose UI &amp; <code>/dashboard</code></span>
+    </div>
+    <div style="font-size:12px;color:var(--saint);font-weight:700;">
+      HUMAN-IN-THE-LOOP VERIFIED • ZERO DEPRECATED GEMINI PARAMS
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 if __name__ == "__main__":
     import uvicorn
 
