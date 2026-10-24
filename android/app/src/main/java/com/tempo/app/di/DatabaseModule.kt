@@ -29,4 +29,9 @@ object DatabaseModule {
     fun provideSessionDao(database: TempoDatabase): SessionDao {
         return database.sessionDao()
     }
+
+    @Provides
+    fun provideUserProfileDao(database: TempoDatabase): com.tempo.app.data.local.UserProfileDao {
+        return database.userProfileDao()
+    }
 }

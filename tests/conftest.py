@@ -13,12 +13,13 @@ from app.db.mongodb import get_database
 from app.api.v1.sessions import router as sessions_router
 from app.api.v1.live import router as live_router
 from app.api.v1.cadence import router as cadence_router
+from app.api.v1.onboarding import router as onboarding_router
 
 
 def create_application():
     """Isolated legacy service harness; production uses backend.main."""
     application = FastAPI()
-    for router in (sessions_router, live_router, cadence_router):
+    for router in (sessions_router, live_router, cadence_router, onboarding_router):
         application.include_router(router, prefix='/api/v1')
     return application
 from app.services.storage import LocalStorageService, get_storage_service

@@ -4,6 +4,10 @@ Run ``python -m uvicorn app.main:app`` from the repository root.
 Legacy service modules remain importable for component tests, not mounted here.
 """
 from backend.main import app
+from app.api.v1.onboarding import router as onboarding_router
+
+# Register onboarding router under /api/v1 prefix
+app.include_router(onboarding_router, prefix="/api/v1")
 
 
 def create_application():

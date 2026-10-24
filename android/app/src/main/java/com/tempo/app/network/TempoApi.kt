@@ -35,4 +35,9 @@ interface TempoApi {
     suspend fun updateSchedule(
         @Body schedule: UserScheduleDto
     ): UserScheduleDto
+
+    @POST("api/v1/onboarding/next")
+    suspend fun nextOnboardingStep(
+        @Body request: com.tempo.app.network.models.OnboardingStepRequestDto
+    ): com.tempo.app.network.models.OnboardingStepResponseDto
 }

@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -38,11 +39,21 @@ import com.tempo.app.ui.theme.TextMuted
 import com.tempo.app.ui.theme.TextPrimaryWhite
 import com.tempo.app.ui.theme.TextSecondarySilver
 
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tempo.app.feature.home.HomeViewModel
+
 @Composable
 fun HomeScreen(
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
+    val profile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val sportDisplay = profile?.sport?.replaceFirstChar { it.uppercase() } ?: "Badminton"
+    val archetypeDisplay = profile?.targetArchetype ?: "Viktor Axelsen"
+    val playstyleDisplay = profile?.playstyle?.replaceFirstChar { it.uppercase() } ?: "Aggressive"
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -80,12 +91,12 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Badminton Overhead Clear & Jump Smash",
+                    text = "$sportDisplay Overhead & Stroke Mastery",
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Current Benchmark: Viktor Axelsen profile (175.0° full reach). Connect wearable & start recording.",
+                    text = "Current Benchmark: $archetypeDisplay profile • $playstyleDisplay style. Biometrics calibrated & ready.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(20.dp))
