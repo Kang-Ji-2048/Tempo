@@ -61,6 +61,11 @@ class SessionIngestRequest(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Optional client-generated UUID for the session",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
     user_id: str = Field(
         ...,
         min_length=1,
@@ -83,6 +88,11 @@ class SessionIngestRequest(BaseModel):
         default=None,
         description="Target pro or textbook archetype for kinematic comparison (e.g., 'Axelsen', 'Federer', 'Fundamentals')",
         examples=["Axelsen"],
+    )
+    user_intent: Optional[str] = Field(
+        default=None,
+        description="Athlete's free-text focus or intent for the session",
+        examples=["Working on steep angle and early high contact"],
     )
     telemetry: List[BiometricDataPoint] = Field(
         default_factory=list,
@@ -109,6 +119,7 @@ class SessionRecord(BaseModel):
     sport: str = Field(..., description="Sport category")
     stroke_type: str = Field(..., description="Stroke type analyzed")
     target_archetype: Optional[str] = Field(default=None, description="Pro/baseline archetype")
+    user_intent: Optional[str] = Field(default=None, description="Athlete's free-text intent or focus")
     status: SessionStatus = Field(default=SessionStatus.PENDING, description="Session ingestion/processing status")
     video_storage_path: Optional[str] = Field(default=None, description="Local or object storage pointer to stored video")
     video_url: Optional[str] = Field(default=None, description="Signed remote URL if video was ingested via URL")

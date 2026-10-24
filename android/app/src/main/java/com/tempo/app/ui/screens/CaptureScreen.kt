@@ -128,7 +128,19 @@ fun CaptureScreen(
             ClipReviewScreen(
                 videoPath = state.videoPath,
                 promptTitle = state.prompt.title,
-                onUseClip = { viewModel.useClip(state.videoPath) },
+                onUseClip = {
+                    val sessionId = java.util.UUID.randomUUID().toString()
+                    com.tempo.app.feature.ingestion.work.IngestionScheduler.scheduleUpload(
+                        context = context,
+                        sessionId = sessionId,
+                        videoPath = state.videoPath,
+                        sport = "badminton",
+                        strokeType = "overhead_clear",
+                        targetArchetype = "Axelsen",
+                        userIntent = state.prompt.title
+                    )
+                    navController.navigate(Screen.Analysis.createRoute(sessionId))
+                },
                 onRetake = { viewModel.retake(state.videoPath) },
                 modifier = modifier,
             )
@@ -138,7 +150,17 @@ fun CaptureScreen(
             ClipSavedView(
                 videoPath = state.videoPath,
                 onViewAnalysis = {
-                    navController.navigate(Screen.Analysis.createRoute("session_captured_${System.currentTimeMillis()}"))
+                    val sessionId = java.util.UUID.randomUUID().toString()
+                    com.tempo.app.feature.ingestion.work.IngestionScheduler.scheduleUpload(
+                        context = context,
+                        sessionId = sessionId,
+                        videoPath = state.videoPath,
+                        sport = "badminton",
+                        strokeType = "overhead_clear",
+                        targetArchetype = "Axelsen",
+                        userIntent = state.prompt.title
+                    )
+                    navController.navigate(Screen.Analysis.createRoute(sessionId))
                 },
                 onRecordAnother = { viewModel.retake(state.videoPath) },
                 modifier = modifier,

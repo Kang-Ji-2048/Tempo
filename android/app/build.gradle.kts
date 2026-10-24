@@ -99,9 +99,19 @@ dependencies {
     implementation(libs.mediapipe.tasks.vision)
     implementation(libs.androidx.graphics.path)
 
-    // Media3 ExoPlayer
+    // Media3 ExoPlayer & Transformer
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.transformer)
+    implementation(libs.androidx.media3.effect)
+
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // Room Database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.compose.ui.tooling)

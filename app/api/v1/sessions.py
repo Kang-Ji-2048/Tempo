@@ -128,7 +128,7 @@ async def ingest_session(
             detail="Either a video file upload or a valid video_url must be provided.",
         )
 
-    session_id = str(uuid4())
+    session_id = metadata.session_id if metadata.session_id else str(uuid4())
     stored_video_path: Optional[str] = None
 
     # 2. Validate and store uploaded video file if provided
@@ -162,6 +162,7 @@ async def ingest_session(
         sport=metadata.sport,
         stroke_type=metadata.stroke_type,
         target_archetype=metadata.target_archetype,
+        user_intent=metadata.user_intent,
         status=SessionStatus.PENDING,
         video_storage_path=stored_video_path,
         video_url=video_url,
