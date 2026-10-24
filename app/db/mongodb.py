@@ -10,6 +10,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from app.core.config import get_settings
+from backend.database_config import validate_database_name
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,9 @@ class MongoDBManager:
         """Connects to MongoDB Atlas using Motor async client."""
         settings = get_settings()
         target_uri = uri or settings.MONGODB_URI
-        target_db = db_name or settings.MONGODB_DB_NAME
+        target_db = validate_database_name(db_name or settings.MONGODB_DB_NAME)
 
-        logger.info("Connecting to MongoDB at %s (DB: %s)...", target_uri, target_db)
+        logger.info("Connecting to MongoDB (DB: %s)...", target_db)
         cls.client = AsyncIOMotorClient(target_uri)
         cls.database = cls.client[target_db]
         logger.info("Connected to MongoDB successfully.")
@@ -49,12 +50,13 @@ class MongoDBManager:
             settings = get_settings()
             # If not connected yet via lifespan, instantiate client dynamically
             cls.client = AsyncIOMotorClient(settings.MONGODB_URI)
-            cls.database = cls.client[settings.MONGODB_DB_NAME]
+            cls.database = cls.client[validate_database_name(settings.MONGODB_DB_NAME)]
         return cls.database
 
     @classmethod
     def set_database(cls, db: AsyncIOMotorDatabase) -> None:
         """Overrides the active database (useful for testing & mocks)."""
+        validate_database_name(db.name)
         cls.database = db
 
 

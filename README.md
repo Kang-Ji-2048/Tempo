@@ -17,6 +17,16 @@ The Blueprint deploys only `watch_receiver/` from `main`, creates one Free web
 service, generates separate read/write keys, and disables automatic redeploys.
 No credentials or health readings are committed.
 
+## Database
+
+All records use `sports_coach_db`, including sessions, strokes, Watch telemetry,
+player state, pairing, schedules and reference queries. Both MongoDB adapters share
+the same database selector. If configured, MONGODB_DB_NAME, MONGODB_DATABASE and
+MONGODB_WATCH_DATABASE must all be sports_coach_db; incompatible overrides fail
+instead of silently writing to another database. The connection URI remains private.
+Restart running backends and relays after updating. Existing records in older
+databases are not migrated or deleted by this routing change.
+
 ## Shared analysis backend
 
 The Android session API and Watch/pose pipeline now use one FastAPI application.

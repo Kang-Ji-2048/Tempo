@@ -59,8 +59,14 @@ except ImportError:
     class PyMongoError(Exception):  # type: ignore
         pass
 
-DB_NAME = "badminton_coach"
-WATCH_DB_NAME = os.environ.get("MONGODB_WATCH_DATABASE", DB_NAME).strip() or DB_NAME
+if __package__:
+    from .database_config import DATABASE_NAME, validate_database_name, validate_database_environment
+else:
+    from database_config import DATABASE_NAME, validate_database_name, validate_database_environment
+
+validate_database_environment()
+DB_NAME = DATABASE_NAME
+WATCH_DB_NAME = DATABASE_NAME
 STROKES_COLLECTION = "strokes"
 PLAYERS_COLLECTION = "players"
 WATCH_TS_COLLECTION = "watch_telemetry_ts"
@@ -420,11 +426,12 @@ def get_mongo_client() -> Optional[Any]:
 
 
 def get_db(database_name: Optional[str] = None):
-    """Return the `badminton_coach` database handle if connected, else None."""
+    """Return the `sports_coach_db` database handle if connected, else None."""
+    target_name = validate_database_name(database_name)
     client = get_mongo_client()
     if client is None:
         return None
-    return client[database_name or DB_NAME]
+    return client[target_name]
 
 
 def _ensure_watch_collection(db: Any) -> None:
@@ -906,7 +913,7 @@ def save_live_watch_telemetry(
             receipt["persisted"] = bool(result.acknowledged)
         except Exception:
             receipt["error"] = "watch_storage_write_failed"
-    # Latest player state remains in the core database; only telemetry is rerouted.
+    # Latest player state and Watch time-series share sports_coach_db.
     db = get_db()
     if db is not None:
         try:
@@ -1130,7 +1137,7 @@ def get_latest_watch_telemetry(user_name: Optional[str] = None) -> Optional[Dict
 
 def save_analysis_session(session_doc: Dict[str, Any]) -> str:
     """
-    Save the full stroke analysis session + staged Saint AI job into `badminton_coach.strokes`.
+    Save the full stroke analysis session + staged Saint AI job into `sports_coach_db.strokes`.
     Returns the `session_id`.
     """
     session_id = session_doc.get("session_id") or f"session_{uuid.uuid4().hex[:12]}"

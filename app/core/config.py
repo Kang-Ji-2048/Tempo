@@ -3,7 +3,8 @@ app/core/config.py - Application Configuration using Pydantic Settings
 """
 
 from functools import lru_cache
-from typing import List, Optional
+from typing import List, Optional, Literal
+from backend.database_config import DATABASE_NAME, validate_database_environment
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +23,7 @@ class Settings(BaseSettings):
 
     # MongoDB Atlas settings
     MONGODB_URI: str = "mongodb://localhost:27017"
-    MONGODB_DB_NAME: str = "courtvision_db"
+    MONGODB_DB_NAME: Literal["sports_coach_db"] = DATABASE_NAME
     SESSIONS_COLLECTION: str = "sessions"
     TELEMETRY_COLLECTION: str = "telemetry_timeseries"
     POSE_ARCHETYPES_COLLECTION: str = "pose_archetypes"
@@ -53,4 +54,5 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Returns cached application settings."""
+    validate_database_environment()
     return Settings()

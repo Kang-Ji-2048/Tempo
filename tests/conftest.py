@@ -139,7 +139,7 @@ class MockAsyncCollection:
 class MockAsyncDatabase:
     """In-memory mock of AsyncIOMotorDatabase."""
 
-    def __init__(self, name: str = "courtvision_db") -> None:
+    def __init__(self, name: str = "sports_coach_db") -> None:
         self.name = name
         self.collections: Dict[str, MockAsyncCollection] = {}
 
@@ -155,7 +155,7 @@ class MockAsyncDatabase:
 @pytest.fixture
 def mock_db() -> MockAsyncDatabase:
     """Fixture providing a fresh mock MongoDB database."""
-    return MockAsyncDatabase(name="courtvision_db")
+    return MockAsyncDatabase(name="sports_coach_db")
 
 
 @pytest.fixture
@@ -165,7 +165,7 @@ def test_settings(tmp_path: Any) -> Settings:
         APP_NAME="Tempo Test Ingest",
         DEBUG=True,
         UPLOAD_DIR=str(tmp_path / "uploads"),
-        MONGODB_DB_NAME="courtvision_db",
+        MONGODB_DB_NAME="sports_coach_db",
         SESSIONS_COLLECTION="sessions",
         TELEMETRY_COLLECTION="telemetry_timeseries",
         POSE_ARCHETYPES_COLLECTION="pose_archetypes",

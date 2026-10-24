@@ -7,27 +7,32 @@ import db_mongo as db
 
 
 class WatchTargetTests(unittest.TestCase):
-    def test_database_handle_can_target_watch_database_independently(self):
+    def test_default_and_watch_handles_target_the_same_database(self):
         client = MagicMock()
         with patch.object(db, 'get_mongo_client', return_value=client):
             db.get_db('sports_coach_db')
             client.__getitem__.assert_called_with('sports_coach_db')
             db.get_db()
-            client.__getitem__.assert_called_with('badminton_coach')
+            client.__getitem__.assert_called_with('sports_coach_db')
 
-    def test_writes_watch_database_but_keeps_player_state_in_core_database(self):
-        watch, core = MagicMock(), MagicMock()
-        watch.list_collection_names.return_value = [db.WATCH_TS_COLLECTION]
-        watch[db.WATCH_TS_COLLECTION].options.return_value = {
+    def test_watch_readings_and_latest_player_state_share_the_database(self):
+        client, database = MagicMock(), MagicMock()
+        client.__getitem__.return_value = database
+        database.list_collection_names.return_value = [db.WATCH_TS_COLLECTION]
+        database[db.WATCH_TS_COLLECTION].options.return_value = {
             'timeseries': {'timeField': 'timestamp', 'metaField': 'metadata'}}
-        watch[db.WATCH_TS_COLLECTION].insert_one.return_value.acknowledged = True
-        with patch.object(db, 'WATCH_DB_NAME', 'sports_coach_db'), patch.object(db, 'get_db', side_effect=lambda name=None: watch if name else core):
-            result = db.save_live_watch_telemetry('routing_test', {'heart_rate_bpm': 130})
-        watch[db.WATCH_TS_COLLECTION].insert_one.assert_called_once()
-        core[db.WATCH_TS_COLLECTION].insert_one.assert_not_called()
-        core[db.PLAYERS_COLLECTION].update_one.assert_called_once()
-        watch[db.PLAYERS_COLLECTION].update_one.assert_not_called()
-        self.assertEqual(result['storage'], {'database': 'sports_coach_db', 'collection': 'watch_telemetry_ts', 'persisted': True})
+        database[db.WATCH_TS_COLLECTION].insert_one.return_value.acknowledged = True
+        with patch.object(db, 'get_mongo_client', return_value=client):
+            result = db.save_live_watch_telemetry('routing_test', {'heart_rate_bpm':130})
+        self.assertTrue(all(call.args == ('sports_coach_db',) for call in client.__getitem__.call_args_list))
+        database[db.WATCH_TS_COLLECTION].insert_one.assert_called_once()
+        database[db.PLAYERS_COLLECTION].update_one.assert_called_once()
+        self.assertTrue(result['storage']['persisted'])
+
+    def test_other_database_overrides_are_rejected_before_connecting(self):
+        with patch.object(db, 'get_mongo_client') as connect:
+            with self.assertRaises(ValueError): db.get_db('legacy_database')
+        connect.assert_not_called()
 
     def test_queries_follow_watch_database(self):
         with patch.object(db, 'WATCH_DB_NAME', 'sports_coach_db'), patch.object(db, 'get_db', return_value=None) as get_db:

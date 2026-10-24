@@ -147,7 +147,7 @@ class VectorMatcher:
     @classmethod
     async def seed_reference_archetypes(cls, db: Optional[AsyncIOMotorDatabase] = None) -> int:
         """
-        Seeds canonical reference pose archetypes into courtvision_db.pose_archetypes.
+        Seeds canonical reference pose archetypes into sports_coach_db.pose_archetypes.
         """
         target_db = db if db is not None else get_database()
         settings = get_settings()

@@ -21,7 +21,7 @@ the PyMongo database configuration in backend/.env. Do not launch both servers.
 | --- | --- | --- |
 | Pose | MediaPipe world-coordinate extraction and explicit failure | Gemini video report, with automatic mock report when no key exists |
 | Sessions | Canonical stroke records plus Android adapter | Android-first session envelope and processing statuses |
-| Database | PyMongo, configured core DB, separate Watch DB | Motor and courtvision_db by default |
+| Database | PyMongo in sports_coach_db | Motor in the same sports_coach_db |
 | Telemetry | Watch pairing, latest player state, sports_coach_db.watch_telemetry_ts | Per-upload Health Connect metadata |
 | Feedback | Measured pose, coaching model provenance, drills | Four phases, scores, audio text and richer SDUI |
 | Operations | Watch analytics and explicit approval controls | Upload storage, separate live and cadence modules |
@@ -108,3 +108,5 @@ not found; Kotlin tests and APK assembly have not run. Added JVM regressions cov
 stable mock upload IDs, HTTP error status, player identity, drill decoding and
 phase timestamps without fabricated scores. A real phone/video/Watch session has
 not been tested in this pass. No changes were pushed or deployed.
+
+All MongoDB record types now share sports_coach_db. Database selectors reject conflicting overrides. Restart existing processes after pulling; historical records in older databases are not moved by this change.

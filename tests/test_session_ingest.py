@@ -22,7 +22,7 @@ async def test_session_ingest_successful_file_upload(
 ):
     """
     Test 1: Successful upload of a mock MP4 file and valid Health Connect telemetry.
-    Verifies 202 Accepted response, database persistence in courtvision_db.sessions,
+    Verifies 202 Accepted response, database persistence in sports_coach_db.sessions,
     and storage of biometric time-series documents.
     """
     files = {

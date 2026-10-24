@@ -102,7 +102,7 @@ class SessionIngestRequest(BaseModel):
 
 class SessionRecord(BaseModel):
     """
-    MongoDB document representation persisted in `courtvision_db.sessions`.
+    MongoDB document representation persisted in `sports_coach_db.sessions`.
     """
 
     model_config = ConfigDict(
