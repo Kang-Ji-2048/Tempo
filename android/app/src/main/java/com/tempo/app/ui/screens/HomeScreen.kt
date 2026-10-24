@@ -43,6 +43,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tempo.app.feature.home.HomeViewModel
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
@@ -50,9 +62,114 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val profile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val debugState by viewModel.debugState.collectAsStateWithLifecycle()
+    var showDebugSheet by remember { mutableStateOf(false) }
+
     val sportDisplay = profile?.sport?.replaceFirstChar { it.uppercase() } ?: "Badminton"
     val archetypeDisplay = profile?.targetArchetype ?: "Viktor Axelsen"
     val playstyleDisplay = profile?.playstyle?.replaceFirstChar { it.uppercase() } ?: "Aggressive"
+
+    if (showDebugSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showDebugSheet = false },
+            sheetState = sheetState,
+            containerColor = SurfaceCharcoal,
+            contentColor = TextPrimaryWhite
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "SETTINGS & DEBUG",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = AccentNeonVolt
+                )
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(containerColor = BackgroundOnyx),
+                    border = BorderStroke(1.dp, CardBorderSubtle)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "BASE_URL:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text(text = debugState.baseUrl, style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Active Mode:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text(
+                                text = if (debugState.isMockMode) "Mock API" else "Real Backend",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (debugState.isMockMode) TextSecondarySilver else AccentNeonVolt
+                            )
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Token Present:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text(
+                                text = if (debugState.isTokenPresent) "Yes" else "No",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (debugState.isTokenPresent) AccentNeonVolt else TextSecondarySilver
+                            )
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Unified User ID:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text(text = debugState.userId, style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite)
+                        }
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(text = "Backend /health Result:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text(
+                                text = debugState.healthStatus,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimaryWhite
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Use mock API", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "Takes effect after restart",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
+                    Switch(
+                        checked = debugState.isMockMode,
+                        onCheckedChange = { viewModel.setUseMockApi(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = BackgroundOnyx,
+                            checkedTrackColor = AccentNeonVolt
+                        )
+                    )
+                }
+
+                Button(
+                    onClick = { viewModel.checkHealth() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentNeonVolt,
+                        contentColor = BackgroundOnyx
+                    ),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Re-test Backend /health")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -62,8 +179,16 @@ fun HomeScreen(
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Top Welcome Header
-        Column {
+        // Top Welcome Header with Long-Press Debug Trigger
+        Column(
+            modifier = Modifier.combinedClickable(
+                onLongClick = {
+                    showDebugSheet = true
+                    viewModel.checkHealth()
+                },
+                onClick = {}
+            )
+        ) {
             Text(
                 text = "TEMPO AI",
                 style = MaterialTheme.typography.labelLarge,

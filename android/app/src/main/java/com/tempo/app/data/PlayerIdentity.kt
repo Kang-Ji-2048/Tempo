@@ -9,8 +9,15 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import com.tempo.app.BuildConfig
+
 interface PlayerIdentity {
+    var userId: String
+        get() = playerId
+        set(value) { playerId = value }
     var playerId: String
+        get() = "user_1"
+        set(value) {}
     var accessToken: String
         get() = ""
         set(value) {}
@@ -47,9 +54,21 @@ class SharedPreferencesPlayerIdentity @Inject constructor(@ApplicationContext co
             val encrypted = android.util.Base64.encodeToString(cipher.doFinal(value.trim().toByteArray(Charsets.UTF_8)), android.util.Base64.NO_WRAP)
             preferences.edit().putString("access_token", "$iv:$encrypted").apply()
         }
+    override var userId: String
+        get() {
+            val defaultId = BuildConfig.TEMPO_USER_ID.ifBlank { "user_1" }
+            return preferences.getString("user_id", preferences.getString("player_id", defaultId) ?: defaultId) ?: defaultId
+        }
+        set(value) {
+            val clean = value.trim().ifBlank { BuildConfig.TEMPO_USER_ID.ifBlank { "user_1" } }
+            preferences.edit()
+                .putString("user_id", clean)
+                .putString("player_id", clean)
+                .apply()
+        }
     override var playerId: String
-        get() = preferences.getString("player_id", "user_1") ?: "user_1"
-        set(value) { preferences.edit().putString("player_id", value.trim()).apply() }
+        get() = userId
+        set(value) { userId = value }
 }
 
 @Module

@@ -20,9 +20,31 @@ import com.tempo.app.ui.theme.BackgroundOnyx
 import com.tempo.app.ui.theme.TempoTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tempo.app.data.AuthBannerNotifier
+import com.tempo.app.ui.theme.TextPrimaryWhite
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var authBannerNotifier: AuthBannerNotifier
 
     private val intentFlow = MutableSharedFlow<Intent>(extraBufferCapacity = 1)
 
@@ -33,6 +55,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             TempoTheme {
                 val navController = rememberNavController()
+                val showAuthBanner by authBannerNotifier.showUnauthorizedBanner.collectAsStateWithLifecycle(initialValue = false)
 
                 LaunchedEffect(Unit) {
                     handleIntent(intent, navController)
@@ -44,6 +67,38 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = BackgroundOnyx,
+                    topBar = {
+                        if (showAuthBanner) {
+                            Surface(
+                                color = Color(0xFFB00020),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .statusBarsPadding()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Backend rejected the token, check local.properties",
+                                        color = TextPrimaryWhite,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(onClick = { authBannerNotifier.dismiss() }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Dismiss",
+                                            tint = TextPrimaryWhite
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
                     bottomBar = {
                         TempoBottomBar(navController = navController)
                     }

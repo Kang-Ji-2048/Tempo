@@ -308,18 +308,33 @@ private fun PermissionsAndSummaryView(
         )
     }
 
-    // Health Connect mock permission toggle
+    val healthConnectManager = remember { com.tempo.app.feature.biometrics.HealthConnectManager(context) }
+    var healthConnectAvailable by remember { mutableStateOf(healthConnectManager.isAvailable()) }
     var healthConnectGranted by remember { mutableStateOf(false) }
+
+    val healthConnectLauncher = rememberLauncherForActivityResult(
+        contract = androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+    ) { grantedPermissions ->
+        healthConnectGranted = grantedPermissions.containsAll(healthConnectManager.permissions)
+    }
+
+    LaunchedEffect(Unit) {
+        if (healthConnectAvailable) {
+            healthConnectGranted = healthConnectManager.hasPermissions()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         permissionStatusMap = results
-        healthConnectGranted = true // Auto-link Health Connect when user grants hardware access
+        if (healthConnectAvailable && !healthConnectGranted) {
+            healthConnectLauncher.launch(healthConnectManager.permissions)
+        }
     }
 
     val allHardwareGranted = permissionStatusMap.values.all { it }
-    val allPermissionsGranted = allHardwareGranted && healthConnectGranted
+    val allPermissionsGranted = allHardwareGranted && (!healthConnectAvailable || healthConnectGranted)
 
     Column(
         modifier = Modifier
@@ -451,13 +466,27 @@ private fun PermissionsAndSummaryView(
                 )
 
                 // 5. Health Connect
-                PermissionRow(
-                    icon = Icons.Rounded.Favorite,
-                    title = "Health Connect",
-                    reason = "Correlate cardiovascular fatigue and strain with kinematic breakdown",
-                    granted = healthConnectGranted,
-                    onToggle = { healthConnectGranted = !healthConnectGranted }
-                )
+                if (!healthConnectAvailable) {
+                    PermissionRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = "Health Connect",
+                        reason = "Health Connect not available on this device",
+                        granted = false,
+                        onToggle = null
+                    )
+                } else {
+                    PermissionRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = "Health Connect",
+                        reason = "Correlate cardiovascular fatigue and strain with kinematic breakdown",
+                        granted = healthConnectGranted,
+                        onToggle = {
+                            if (!healthConnectGranted) {
+                                healthConnectLauncher.launch(healthConnectManager.permissions)
+                            }
+                        }
+                    )
+                }
             }
         }
 

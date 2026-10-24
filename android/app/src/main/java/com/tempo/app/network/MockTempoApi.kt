@@ -17,10 +17,20 @@ import javax.inject.Singleton
  * Conforms to project rule: "provide a MockApi so every screen works offline".
  */
 @Singleton
-class MockTempoApi @Inject constructor() : TempoApi {
+class MockTempoApi @Inject constructor(
+    private val identity: com.tempo.app.data.PlayerIdentity
+) : TempoApi {
+
+    constructor() : this(object : com.tempo.app.data.PlayerIdentity {})
+
+    private val currentUserId: String get() = identity.userId.ifBlank { "user_1" }
 
     private val pollCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val savedSchedules = java.util.concurrent.ConcurrentHashMap<String, UserScheduleDto>()
+
+    override suspend fun getHealth(): Map<String, String> {
+        return mapOf("status" to "ready", "service" to "tempo-mock")
+    }
 
     override suspend fun ingestSession(
         metadata: RequestBody,
@@ -57,7 +67,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         if (currentStatus == "FAILED") {
             return SessionRecordDto(
                 sessionId = sessionId,
-                userId = "usr_sumanth_001",
+                userId = currentUserId,
                 sport = "badminton",
                 strokeType = "overhead_clear",
                 targetArchetype = "Viktor Axelsen",
@@ -69,7 +79,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         if (currentStatus == "PENDING" || currentStatus == "ANALYZING") {
             return SessionRecordDto(
                 sessionId = sessionId,
-                userId = "usr_sumanth_001",
+                userId = currentUserId,
                 sport = "badminton",
                 strokeType = "overhead_clear",
                 targetArchetype = "Viktor Axelsen",
@@ -171,7 +181,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
 
         return SessionRecordDto(
             sessionId = sessionId,
-            userId = "usr_sumanth_001",
+            userId = currentUserId,
             sport = "badminton",
             strokeType = "overhead_clear",
             targetArchetype = "Viktor Axelsen",
@@ -499,7 +509,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         val selectedArchetype = answers["archetype"] ?: "Viktor Axelsen"
 
         val userProfile = com.tempo.app.network.models.UserProfileDto(
-            userId = "usr_athlete_001",
+            userId = currentUserId,
             sport = selectedSport,
             level = selectedLevel,
             goal = selectedGoal,

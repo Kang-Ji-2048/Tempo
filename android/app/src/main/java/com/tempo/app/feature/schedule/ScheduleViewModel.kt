@@ -37,12 +37,12 @@ class ScheduleViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        ScheduleUiState(userId = identity.playerId.ifBlank { "athlete" })
+        ScheduleUiState(userId = identity.userId.ifBlank { "user_1" })
     )
     val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
 
     fun loadSchedule(scope: kotlinx.coroutines.CoroutineScope = viewModelScope): kotlinx.coroutines.Job {
-        val user = identity.playerId.ifBlank { "athlete" }
+        val user = identity.userId.ifBlank { "user_1" }
         _uiState.update { it.copy(isLoading = true, errorMessage = null, userId = user) }
 
         return scope.launch {

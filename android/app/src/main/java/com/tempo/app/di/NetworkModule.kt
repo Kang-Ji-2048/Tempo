@@ -35,7 +35,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(identity: com.tempo.app.data.PlayerIdentity): OkHttpClient {
+    fun provideOkHttpClient(
+        identity: com.tempo.app.data.PlayerIdentity,
+        authBannerNotifier: com.tempo.app.data.AuthBannerNotifier
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BASIC
@@ -46,11 +49,16 @@ object NetworkModule {
         logging.redactHeader("Authorization")
         return OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val token = identity.accessToken
+                val identityToken = identity.accessToken
+                val token = if (identityToken.isNotBlank()) identityToken else BuildConfig.TEMPO_DEBUG_TOKEN
                 val request = chain.request().newBuilder().apply {
                     if (token.isNotBlank()) header("Authorization", "Bearer $token")
                 }.build()
-                chain.proceed(request)
+                val response = chain.proceed(request)
+                if (response.code == 401) {
+                    authBannerNotifier.notifyUnauthorized()
+                }
+                response
             }
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -74,10 +82,12 @@ object NetworkModule {
     @Singleton
     fun provideTempoApi(
         retrofit: Retrofit,
-        mockApi: MockTempoApi
+        mockApi: MockTempoApi,
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context
     ): TempoApi {
-        // Toggle real vs mock api via BuildConfig.USE_MOCK_API debug flag
-        return if (BuildConfig.USE_MOCK_API) {
+        val prefs = context.getSharedPreferences("tempo_config", android.content.Context.MODE_PRIVATE)
+        val useMock = prefs.getBoolean("use_mock_api", BuildConfig.USE_MOCK_API)
+        return if (useMock) {
             mockApi
         } else {
             retrofit.create(TempoApi::class.java)

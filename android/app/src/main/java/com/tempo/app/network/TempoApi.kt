@@ -40,4 +40,7 @@ interface TempoApi {
     suspend fun nextOnboardingStep(
         @Body request: com.tempo.app.network.models.OnboardingStepRequestDto
     ): com.tempo.app.network.models.OnboardingStepResponseDto
+
+    @GET("health")
+    suspend fun getHealth(): Map<String, String>
 }

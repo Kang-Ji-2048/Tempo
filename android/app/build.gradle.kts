@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,18 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
 }
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+
+val localBaseUrl = localProperties.getProperty("BASE_URL", "http://10.0.2.2:8000/")
+val localDebugToken = localProperties.getProperty("TEMPO_DEBUG_TOKEN", "")
+val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "")
+val localUseMockApi = localProperties.getProperty("USE_MOCK_API", "false").toBoolean()
+val localUserId = localProperties.getProperty("TEMPO_USER_ID", "user_1")
 
 android {
     namespace = "com.tempo.app"
@@ -20,8 +34,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "BASE_URL", "\"http://10.0.6.243:8000/\"")
-        buildConfigField("Boolean", "USE_MOCK_API", "true")
+        buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+        buildConfigField("Boolean", "USE_MOCK_API", "$localUseMockApi")
+        buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"$localDebugToken\"")
+        buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+        buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
     }
 
     buildTypes {
@@ -31,10 +48,27 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "BASE_URL", "\"https://api.tempo.app/\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "false")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
         }
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://10.0.6.243:8000/\"")
+            buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "$localUseMockApi")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"$localDebugToken\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
+        }
+        create("demoOffline") {
+            initWith(getByName("debug"))
+            matchingFallbacks += listOf("debug")
+            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000/\"")
             buildConfigField("Boolean", "USE_MOCK_API", "true")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
         }
     }
 

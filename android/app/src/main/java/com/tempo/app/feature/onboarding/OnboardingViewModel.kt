@@ -42,7 +42,8 @@ sealed interface OnboardingNavigationEvent {
 class OnboardingViewModel @Inject constructor(
     private val onboardingRepository: OnboardingRepository,
     private val userProfileRepository: UserProfileRepository,
-    private val widgetParser: WidgetParser
+    private val widgetParser: WidgetParser,
+    private val identity: com.tempo.app.data.PlayerIdentity
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
@@ -129,7 +130,7 @@ class OnboardingViewModel @Inject constructor(
     fun completeOnboardingAndSave(allPermissionsGranted: Boolean) {
         viewModelScope.launch {
             val profile = _uiState.value.userProfile ?: UserProfileDto(
-                userId = "usr_athlete_001",
+                userId = identity.userId,
                 sport = _uiState.value.answers["sport"] ?: "badminton",
                 level = _uiState.value.answers["level"] ?: "intermediate",
                 goal = _uiState.value.answers["goal"] ?: "overhead_power",
@@ -140,7 +141,7 @@ class OnboardingViewModel @Inject constructor(
             )
 
             val entity = UserProfileEntity(
-                userId = profile.userId,
+                userId = identity.userId,
                 sport = profile.sport,
                 level = profile.level,
                 goal = profile.goal,

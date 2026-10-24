@@ -65,11 +65,11 @@ class SessionRepositoryTest {
         val mockApi = MockTempoApi()
         val repository = SessionRepositoryImpl(mockApi)
 
-        val scheduleResult = repository.getSchedule("usr_sumanth_001")
+        val scheduleResult = repository.getSchedule("user_1")
         assertTrue(scheduleResult is NetworkResult.Success)
 
         val schedule = (scheduleResult as NetworkResult.Success).data
-        assertEquals("usr_sumanth_001", schedule.userId)
+        assertEquals("user_1", schedule.userId)
         assertEquals("18:00", schedule.targetTimeUtc)
 
         val updated = schedule.copy(targetTimeUtc = "19:00")

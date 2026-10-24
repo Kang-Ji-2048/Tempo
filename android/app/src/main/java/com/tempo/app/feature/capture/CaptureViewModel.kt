@@ -26,11 +26,11 @@ class CaptureViewModel @Inject constructor(
         _accessToken.value = value
         identity.accessToken = value
     }
-    private val _playerId = MutableStateFlow(identity.playerId)
+    private val _playerId = MutableStateFlow(identity.userId)
     val playerId: StateFlow<String> = _playerId.asStateFlow()
     fun setPlayerId(value: String) {
         _playerId.value = value.take(128)
-        if (value.isNotBlank()) identity.playerId = value.take(128)
+        if (value.isNotBlank()) identity.userId = value.take(128)
     }
 
     private var activePrompt = DEFAULT_PROMPT

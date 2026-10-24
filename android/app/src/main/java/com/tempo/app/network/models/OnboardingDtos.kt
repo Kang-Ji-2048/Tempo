@@ -13,7 +13,7 @@ data class OnboardingStepRequestDto(
 
 @Serializable
 data class UserProfileDto(
-    @SerialName("user_id") val userId: String = "usr_athlete_001",
+    @SerialName("user_id") val userId: String = "user_1",
     val sport: String = "badminton",
     val level: String = "intermediate",
     val goal: String = "overhead_power",
