@@ -1,5 +1,8 @@
 package com.tempo.app.feature.analysis
 
+import com.tempo.app.feature.correction.model.CachedVideoPoseTrack
+import com.tempo.app.feature.correction.model.KeyframeComparison
+import com.tempo.app.feature.correction.model.KineticPhaseUiModel
 import com.tempo.app.feature.sdui.model.Widget
 
 enum class AnalysisStep {
@@ -25,5 +28,10 @@ data class AnalysisUiState(
     val debrief: BiomechanicalDebrief? = null,
     val widgets: List<Widget> = emptyList(),
     val errorMessage: String? = null,
-    val isPolling: Boolean = true
+    val isPolling: Boolean = true,
+    val videoPath: String? = null,
+    val kineticPhases: List<KineticPhaseUiModel> = emptyList(),
+    val poseTrack: CachedVideoPoseTrack? = null,
+    val keyframeComparisons: List<KeyframeComparison> = emptyList(),
+    val isLoadingVisualCorrections: Boolean = false
 )

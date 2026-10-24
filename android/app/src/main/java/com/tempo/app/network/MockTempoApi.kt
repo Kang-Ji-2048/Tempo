@@ -80,6 +80,32 @@ class MockTempoApi @Inject constructor() : TempoApi {
             put("primary_flaw", "Elbow dropped to 158.4° at contact")
             put("concise_audio_cue", "Accelerate forearm pronation at peak reach.")
             put("coach_voice_note_script", "Great session today! Your contact reach was explosive.")
+            put("kinetic_phases", kotlinx.serialization.json.buildJsonArray {
+                add(buildJsonObject {
+                    put("phase_name", "Preparation")
+                    put("timestamp_ms", 300)
+                    put("form_accuracy_score", 92)
+                    put("observation", "Stable base with strong non-racket arm elevation for tracking shuttle height.")
+                })
+                add(buildJsonObject {
+                    put("phase_name", "Loading")
+                    put("timestamp_ms", 850)
+                    put("form_accuracy_score", 80)
+                    put("observation", "Slightly restricted thoracic arch during loading phase under fatigue.")
+                })
+                add(buildJsonObject {
+                    put("phase_name", "Impact")
+                    put("timestamp_ms", 1320)
+                    put("form_accuracy_score", 74)
+                    put("observation", "Elbow flexion at contact (158.4°) lacked full extension compared to Axelsen profile (175°).")
+                })
+                add(buildJsonObject {
+                    put("phase_name", "Follow-Through")
+                    put("timestamp_ms", 1750)
+                    put("form_accuracy_score", 88)
+                    put("observation", "Smooth kinetic dissipation across the torso with quick split-step recovery.")
+                })
+            })
         }
 
         val mockWidget1 = buildJsonObject {

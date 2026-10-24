@@ -52,6 +52,8 @@ import com.tempo.app.feature.analysis.AnalysisStep
 import com.tempo.app.feature.analysis.AnalysisViewModel
 import com.tempo.app.feature.analysis.BiomechanicalDebrief
 import com.tempo.app.feature.analysis.ui.AnalysisStepper
+import com.tempo.app.feature.correction.ui.KeyframeStripView
+import com.tempo.app.feature.correction.ui.VisualCorrectionPlayer
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
 import com.tempo.app.ui.theme.AccentNeonVolt
@@ -202,7 +204,26 @@ fun AnalysisScreen(
                 DebriefHeaderCard(debrief = uiState.debrief!!)
             }
 
-            // SDUI Widgets rendered under header via WidgetRenderer
+            // Visual Correction Motion Player with 33-Landmark Pose Overlay & Scrub Bar
+            item {
+                VisualCorrectionPlayer(
+                    videoPath = uiState.videoPath,
+                    poseTrack = uiState.poseTrack,
+                    phases = uiState.kineticPhases
+                )
+            }
+
+            // Horizontally Scrollable Kinetic Phase Strip (4 phases with dual skeleton & deviations)
+            if (uiState.keyframeComparisons.isNotEmpty()) {
+                item {
+                    KeyframeStripView(
+                        comparisons = uiState.keyframeComparisons,
+                        onPhaseClicked = { phase ->
+                            // Tapping card focuses phase in player
+                        }
+                    )
+                }
+            }
             if (uiState.widgets.isNotEmpty()) {
                 item {
                     Text(

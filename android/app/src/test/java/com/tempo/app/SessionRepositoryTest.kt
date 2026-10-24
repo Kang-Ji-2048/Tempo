@@ -16,10 +16,20 @@ class SessionRepositoryTest {
         val mockApi = MockTempoApi()
         val repository = SessionRepositoryImpl(mockApi)
 
-        val result = repository.getSession("test_session_123")
-        assertTrue("Expected NetworkResult.Success", result is NetworkResult.Success)
+        // Poll 1 -> PENDING
+        val poll1 = repository.getSession("test_session_123")
+        assertTrue("Expected Success", poll1 is NetworkResult.Success)
+        assertEquals("PENDING", (poll1 as NetworkResult.Success).data.status)
 
-        val data = (result as NetworkResult.Success).data
+        // Poll 2 -> ANALYZING
+        val poll2 = repository.getSession("test_session_123")
+        assertTrue("Expected Success", poll2 is NetworkResult.Success)
+        assertEquals("ANALYZING", (poll2 as NetworkResult.Success).data.status)
+
+        // Poll 3 -> COMPLETED
+        val poll3 = repository.getSession("test_session_123")
+        assertTrue("Expected Success", poll3 is NetworkResult.Success)
+        val data = (poll3 as NetworkResult.Success).data
         assertEquals("test_session_123", data.sessionId)
         assertEquals("COMPLETED", data.status)
         assertEquals("Viktor Axelsen", data.targetArchetype)

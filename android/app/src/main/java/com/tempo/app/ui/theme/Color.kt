@@ -20,3 +20,4 @@ val TextMuted = Color(0xFF636773)
 // Status / Accents
 val ErrorRed = Color(0xFFFF5252)
 val SuccessGreen = Color(0xFF00E676)
+val WarningAmber = Color(0xFFFFB703)
