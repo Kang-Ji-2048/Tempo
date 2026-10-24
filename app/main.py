@@ -11,6 +11,8 @@ from typing import Any, AsyncGenerator, Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.cadence import router as cadence_router
+from app.api.v1.live import router as live_router
 from app.api.v1.sessions import router as sessions_router
 from app.core.config import get_settings
 from app.db.mongodb import MongoDBManager
@@ -29,8 +31,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing %s...", settings.APP_NAME)
     try:
         await MongoDBManager.connect_to_mongo()
+        # Seed pro reference pose archetypes
+        from app.services.vector_matcher import VectorMatcher
+
+        await VectorMatcher.seed_reference_archetypes()
     except Exception as exc:
-        logger.warning("MongoDB initial connection deferred or failed: %s", exc)
+        logger.warning("MongoDB initial connection or seed deferred: %s", exc)
 
     yield
 
@@ -85,6 +91,8 @@ def create_application() -> FastAPI:
 
     # Mount API v1 routers
     app.include_router(sessions_router, prefix=settings.API_V1_STR)
+    app.include_router(live_router, prefix=settings.API_V1_STR)
+    app.include_router(cadence_router, prefix=settings.API_V1_STR)
 
     return app
 

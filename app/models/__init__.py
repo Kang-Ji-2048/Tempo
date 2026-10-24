@@ -1,4 +1,10 @@
 from app.models.feedback import BiomechanicalReport, KineticPhase
+from app.models.live import LiveAudioCueResponse, LiveFramePacket
+from app.models.schedule import (
+    CadenceEventType,
+    SaintNotificationPayload,
+    UserSchedule,
+)
 from app.models.sdui import (
     ConceptQuizWidget,
     DrillCardWidget,
@@ -27,4 +33,9 @@ __all__ = [
     "DrillCardWidget",
     "ConceptQuizWidget",
     "SDUIPayload",
+    "UserSchedule",
+    "CadenceEventType",
+    "SaintNotificationPayload",
+    "LiveFramePacket",
+    "LiveAudioCueResponse",
 ]

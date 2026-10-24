@@ -90,7 +90,19 @@ async def process_session_biomechanics(
         if not kinematic_vector:
             kinematic_vector = [0.94, 0.88, 0.95, 0.82, 0.77, 0.91]
 
-        # 6. Update session record to COMPLETED with enriched feedback and widgets
+        # 6. MongoDB Atlas Vector Matching against pro/textbook archetypes
+        from app.services.vector_matcher import VectorMatcher
+
+        vector_match = await VectorMatcher.find_closest_archetype(
+            kinematic_vector=kinematic_vector[:6],
+            sport=sport,
+            stroke_type=stroke_type,
+            db=target_db,
+        )
+        # Enrich report with matched player and similarity
+        report.matched_archetype = vector_match.get("matched_player", report.matched_archetype)
+
+        # 7. Update session record to COMPLETED with enriched feedback, widgets, and vector match
         await collection.update_one(
             {"_id": session_id},
             {
@@ -99,11 +111,17 @@ async def process_session_biomechanics(
                     "gemini_feedback": report.model_dump(),
                     "active_widgets": sdui_payload.widgets,
                     "kinematic_vector": kinematic_vector[:6],
+                    "vector_match": vector_match,
                     "updated_at": datetime.now(timezone.utc),
                 }
             },
         )
-        logger.info("Session %s successfully finalized with status COMPLETED.", session_id)
+        logger.info(
+            "Session %s successfully finalized with status COMPLETED (matched: %s, sim=%.4f).",
+            session_id,
+            vector_match.get("matched_player"),
+            vector_match.get("similarity_score", 0.0),
+        )
 
     except Exception as exc:
         logger.error("Failed biomechanics processing for session %s: %s", session_id, exc, exc_info=True)

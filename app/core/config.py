@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     MONGODB_DB_NAME: str = "courtvision_db"
     SESSIONS_COLLECTION: str = "sessions"
     TELEMETRY_COLLECTION: str = "telemetry_timeseries"
+    POSE_ARCHETYPES_COLLECTION: str = "pose_archetypes"
+
+    # Saint (Thea) Dispatcher settings
+    SAINT_WEBHOOK_URL: Optional[str] = None
 
     # Storage settings
     UPLOAD_DIR: str = "/tmp/uploads"
