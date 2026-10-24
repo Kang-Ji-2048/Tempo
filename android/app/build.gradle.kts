@@ -51,6 +51,12 @@ android {
         compose = true
         buildConfig = true
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
@@ -91,6 +97,7 @@ dependencies {
 
     // MediaPipe Pose Landmarker
     implementation(libs.mediapipe.tasks.vision)
+    implementation(libs.androidx.graphics.path)
 
     // Media3 ExoPlayer
     implementation(libs.androidx.media3.exoplayer)

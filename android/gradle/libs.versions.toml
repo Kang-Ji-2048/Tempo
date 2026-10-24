@@ -18,6 +18,7 @@ camerax = "1.3.4"
 mediapipe = "0.10.14"
 media3 = "1.3.1"
 concurrentFutures = "1.2.0"
+graphicsPath = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -54,6 +55,7 @@ androidx-camera-view = { group = "androidx.camera", name = "camera-view", versio
 
 # MediaPipe Pose Landmarker
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipe" }
+androidx-graphics-path = { group = "androidx.graphics", name = "graphics-path", version.ref = "graphicsPath" }
 
 # Media3 ExoPlayer
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
