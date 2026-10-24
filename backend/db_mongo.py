@@ -243,6 +243,7 @@ SEED_LONDON_PARTNERS: List[Dict[str, Any]] = [
 _MEMORY_STROKES: List[Dict[str, Any]] = [dict(doc) for doc in PRO_REFERENCE_STROKES]
 _MEMORY_PLAYERS: List[Dict[str, Any]] = [dict(doc) for doc in SEED_LONDON_PARTNERS]
 _MEMORY_APPROVALS: Dict[str, Dict[str, Any]] = {}
+_LATEST_WATCH_METRICS: Dict[str, Dict[str, Any]] = {}
 
 _CLIENT: Optional[Any] = None
 
@@ -563,3 +564,57 @@ def update_saint_approval(
         }
 
     return session_record
+
+
+def save_live_watch_telemetry(user_name: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Save live Apple Watch biometrics pushed from the user's iPhone/Watch (via iOS Shortcut or Health Auto Export)
+    into memory and MongoDB so the next video analysis automatically uses the real watch heart rate & calories.
+    """
+    key = (user_name or "Sumanth").strip().lower()
+    record = {
+        "user_name": user_name or "Sumanth",
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        **metrics,
+    }
+    _LATEST_WATCH_METRICS[key] = record
+    _LATEST_WATCH_METRICS["latest"] = record
+
+    db = get_db()
+    if db is not None:
+        try:
+            db[PLAYERS_COLLECTION].update_one(
+                {"player_id": f"live_watch_{key}"},
+                {"$set": {"player_id": f"live_watch_{key}", "is_live_watch": True, **record}},
+                upsert=True,
+            )
+        except Exception:
+            pass
+    return record
+
+
+def get_latest_watch_telemetry(user_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve the most recently synced live Apple Watch metrics for `user_name` (or any latest sync).
+    """
+    if user_name:
+        key = user_name.strip().lower()
+        if key in _LATEST_WATCH_METRICS:
+            return _LATEST_WATCH_METRICS[key]
+    if "latest" in _LATEST_WATCH_METRICS:
+        return _LATEST_WATCH_METRICS["latest"]
+
+    db = get_db()
+    if db is not None:
+        try:
+            doc = db[PLAYERS_COLLECTION].find_one(
+                {"is_live_watch": True},
+                {"_id": 0},
+                sort=[("updated_at", -1)],
+            )
+            if doc:
+                return _strip_mongo_id(doc)
+        except Exception:
+            pass
+    return None
+

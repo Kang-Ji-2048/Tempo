@@ -25,7 +25,9 @@ from db_mongo import (
     check_mongo_health,
     find_closest_pro_pose,
     find_training_partner,
+    get_latest_watch_telemetry,
     save_analysis_session,
+    save_live_watch_telemetry,
     seed_reference_data,
     update_saint_approval,
 )
@@ -119,12 +121,17 @@ async def analyze_badminton_pipeline(
 
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
         pose_result = extract_pose_from_video(temp_video_path or "")
-        watch_metrics = parse_apple_watch_metrics(
-            payload=watch_raw_payload,
-            heart_rate_bpm=heart_rate_bpm,
-            active_calories_kcal=active_calories_kcal,
-            fatigue_state=fatigue_state,
-        )
+        live_cached = get_latest_watch_telemetry(user_name)
+        if watch_raw_payload is None and live_cached is not None and heart_rate_bpm == 168.0 and active_calories_kcal == 420.0:
+            watch_metrics = parse_apple_watch_metrics(payload=live_cached)
+            watch_metrics["source_format"] = "live_apple_watch_sync"
+        else:
+            watch_metrics = parse_apple_watch_metrics(
+                payload=watch_raw_payload,
+                heart_rate_bpm=heart_rate_bpm,
+                active_calories_kcal=active_calories_kcal,
+                fatigue_state=fatigue_state,
+            )
 
         # Step 2: MongoDB Atlas $vectorSearch Pro Matching & Partner Discovery (Taha)
         user_pose_vector = pose_result["pose_vector"]
@@ -216,9 +223,25 @@ async def etl_apple_watch_endpoint(
         active_calories_kcal=active_calories_kcal,
         fatigue_state=fatigue_state,
     )
+    user_for_sync = "Sumanth"
+    if isinstance(raw_payload, dict) and raw_payload.get("user_name"):
+        user_for_sync = str(raw_payload["user_name"])
+    saved = save_live_watch_telemetry(user_for_sync, metrics)
     return {
         "status": "ok",
-        "apple_watch_biometrics": metrics,
+        "synced_to_live_session": True,
+        "apple_watch_biometrics": saved,
+    }
+
+
+@app.get("/pipeline/latest-apple-watch")
+def get_latest_apple_watch_endpoint(user_name: Optional[str] = None) -> Dict[str, Any]:
+    """Return the most recently synced live Apple Watch biometrics."""
+    latest = get_latest_watch_telemetry(user_name)
+    return {
+        "status": "ok",
+        "has_live_telemetry": latest is not None,
+        "apple_watch_biometrics": latest,
     }
 
 
