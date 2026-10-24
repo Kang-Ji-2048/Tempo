@@ -39,7 +39,7 @@ if __package__:
     from .telemetry_time import require_recent
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     from .argon_analysis import run_biomechanical_analysis
-    from . import sports_config, llm_config, user_auth
+    from . import sports_config, llm_config, user_auth, coach_converse
     from .db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -55,6 +55,8 @@ if __package__:
         update_saint_approval,
         get_analysis_session,
         claim_saint_action,
+        start_athlete_memory_watcher,
+        stop_athlete_memory_watcher,
     )
     from .etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
     from .android_api import create_android_router
@@ -63,7 +65,7 @@ else:
     from telemetry_time import require_recent
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     from argon_analysis import run_biomechanical_analysis
-    import sports_config, llm_config, user_auth
+    import sports_config, llm_config, user_auth, coach_converse
     from db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -79,6 +81,8 @@ else:
         update_saint_approval,
         get_analysis_session,
         claim_saint_action,
+        start_athlete_memory_watcher,
+        stop_athlete_memory_watcher,
     )
     from etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
     from android_api import create_android_router
@@ -112,7 +116,10 @@ async def lifespan(app: FastAPI):
     # Seed Roger Federer, Novak Djokovic, Carlos Alcaraz, Serena Williams, Sinner, Nadal,
     # London GeoJSON training partners, and MongoDB Time-Series collection on startup.
     seed_reference_data()
+    if start_athlete_memory_watcher():
+        _log.info("athlete_memory change stream watcher started")
     yield
+    stop_athlete_memory_watcher()
 
 
 app = FastAPI(
@@ -1522,11 +1529,8 @@ try:
 except Exception as _e:
     pass
 
-try:
-    from app.api.v1.coach import router as coach_router
-    app.include_router(coach_router, prefix="/api/v1")
-except Exception as _e:
-    pass
+# Unified omnichannel Coach Thea (replaces the legacy app.api.v1.coach router on the same path).
+app.include_router(coach_converse.router)
 
 try:
     from app.api.v1.sdui import router as sdui_router

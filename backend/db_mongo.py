@@ -1319,3 +1319,395 @@ def update_saint_approval(session_id: str, approved: bool, reviewer_name: str = 
         if session_id in _MEMORY_APPROVALS:
             _MEMORY_APPROVALS[session_id].update(fields)
     return {"session_id": session_id, **fields}
+
+
+# ---------------------------------------------------------------------------
+# Unified athlete core memory (shared by app, live, WhatsApp and Gemini channels)
+# ---------------------------------------------------------------------------
+
+if __package__:
+    from . import sports_config as _sports_config
+else:
+    import sports_config as _sports_config
+
+import logging as _logging
+import re as _re
+import threading as _threading
+from urllib.parse import quote_plus as _quote_plus
+
+_memory_log = _logging.getLogger("tempo.athlete_memory")
+
+ATHLETE_MEMORY_COLLECTION = "athlete_memory"
+DRILLS_COLLECTION = "drills_catalog"
+FACILITIES_COLLECTION = "facilities"
+SAINT_QUEUE_COLLECTION = "saint_notifications"
+DRILLS_SEARCH_INDEX_NAME = "drills_text_index"
+CHAT_HISTORY_TURNS = 15
+
+LEVELS = ("beginner", "intermediate", "advanced")
+INTENSITIES = ("casual", "regular", "competitive")
+NODE_STATUSES = ("locked", "active", "completed")
+MEMORY_FIELDS = (
+    "phone_number", "sport", "skill_focus", "level", "motivation_why", "intensity",
+    "reminder_schedule", "curriculum_nodes", "recent_flaws", "chat_history", "assigned_drills",
+    "last_completed_node",
+)
+
+SEED_LONDON_FACILITIES: List[Dict[str, Any]] = [
+    {"facility_id": "fac_islington_tennis_centre", "name": "Islington Tennis Centre", "postcode": "N7 9RQ",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1196, 51.5524]}},
+    {"facility_id": "fac_westway_sports_centre", "name": "Westway Sports & Fitness Centre", "postcode": "W10 6RP",
+     "sports": ["tennis", "badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.2154, 51.5207]}},
+    {"facility_id": "fac_regents_park_tennis", "name": "Regent's Park Tennis Centre", "postcode": "NW1 4NU",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1530, 51.5285]}},
+    {"facility_id": "fac_paddington_rec", "name": "Paddington Recreation Ground", "postcode": "W9 1PD",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1918, 51.5300]}},
+    {"facility_id": "fac_lee_valley_hockey_tennis", "name": "Lee Valley Hockey & Tennis Centre", "postcode": "E20 3AB",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.0151, 51.5507]}},
+    {"facility_id": "fac_ucl_bloomsbury", "name": "Bloomsbury Fitness - UCL", "postcode": "WC1E 7HY",
+     "sports": ["badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.1340, 51.5246]}},
+]
+
+_MEMORY_ATHLETES: Dict[str, Dict[str, Any]] = {}
+_MEMORY_SAINT_QUEUE: List[Dict[str, Any]] = []
+_ATHLETE_LOCK = Lock()
+
+
+def _utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def youtube_search_url(*terms: str) -> str:
+    """A YouTube search link (never a guessed video id) for a lesson or drill."""
+    return "https://www.youtube.com/results?search_query=" + _quote_plus(" ".join(t for t in terms if t))
+
+
+def default_athlete_memory(user_id: str) -> Dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "phone_number": None,
+        "sport": None,
+        "skill_focus": None,
+        "level": None,
+        "motivation_why": None,
+        "intensity": None,
+        "reminder_schedule": None,
+        "curriculum_nodes": [],
+        "recent_flaws": [],
+        "chat_history": [],
+        "assigned_drills": [],
+        "last_completed_node": None,
+        "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+
+
+def _validate_memory_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
+    unknown = set(updates) - set(MEMORY_FIELDS)
+    if unknown:
+        raise ValueError(f"Unknown athlete_memory fields: {sorted(unknown)}")
+    clean = dict(updates)
+    if clean.get("level") is not None and clean["level"] not in LEVELS:
+        raise ValueError(f"level must be one of {LEVELS}")
+    if clean.get("intensity") is not None and clean["intensity"] not in INTENSITIES:
+        raise ValueError(f"intensity must be one of {INTENSITIES}")
+    if clean.get("sport") is not None:
+        clean["sport"] = str(clean["sport"]).strip().lower()
+    for node in clean.get("curriculum_nodes") or []:
+        if node.get("status") not in NODE_STATUSES:
+            raise ValueError(f"curriculum node status must be one of {NODE_STATUSES}")
+    if "chat_history" in clean:
+        clean["chat_history"] = list(clean["chat_history"])[-CHAT_HISTORY_TURNS:]
+    return clean
+
+
+def get_athlete_memory(user_id: str) -> Dict[str, Any]:
+    """Return the athlete's memory document, or a fresh default (not yet persisted)."""
+    db = get_db()
+    if db is not None:
+        try:
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one({"user_id": user_id}, {"_id": 0})
+            if doc:
+                return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        cached = _MEMORY_ATHLETES.get(user_id)
+        return dict(cached) if cached else default_athlete_memory(user_id)
+
+
+def find_athlete_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
+    phone = (phone_number or "").strip()
+    if not phone:
+        return None
+    db = get_db()
+    if db is not None:
+        try:
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one({"phone_number": phone}, {"_id": 0})
+            if doc:
+                return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        for doc in _MEMORY_ATHLETES.values():
+            if doc.get("phone_number") == phone:
+                return dict(doc)
+    return None
+
+
+def update_athlete_memory(user_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and `$set` fields on the athlete's memory (upserting it), returning the new document."""
+    clean = _validate_memory_updates(updates)
+    now = _utc_now_iso()
+    db = get_db()
+    if db is not None:
+        try:
+            from pymongo import ReturnDocument
+
+            defaults = {k: v for k, v in default_athlete_memory(user_id).items()
+                        if k not in clean and k not in ("user_id", "updated_at")}
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one_and_update(
+                {"user_id": user_id},
+                {"$set": {**clean, "updated_at": now}, "$setOnInsert": defaults},
+                upsert=True,
+                projection={"_id": 0},
+                return_document=ReturnDocument.AFTER,
+            )
+            return doc
+        except PyMongoError as exc:
+            _memory_log.warning("athlete_memory Atlas write failed, using memory: %s", exc)
+    with _ATHLETE_LOCK:
+        doc = _MEMORY_ATHLETES.setdefault(user_id, default_athlete_memory(user_id))
+        doc.update(clean)
+        doc["updated_at"] = now
+        return dict(doc)
+
+
+def append_chat_turn(user_id: str, turn: Dict[str, Any]) -> None:
+    """Push one {user, coach, channel, at} turn, keeping only the last CHAT_HISTORY_TURNS."""
+    db = get_db()
+    if db is not None:
+        try:
+            db[ATHLETE_MEMORY_COLLECTION].update_one(
+                {"user_id": user_id},
+                {"$push": {"chat_history": {"$each": [turn], "$slice": -CHAT_HISTORY_TURNS}},
+                 "$set": {"updated_at": _utc_now_iso()}},
+                upsert=True,
+            )
+            return
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        doc = _MEMORY_ATHLETES.setdefault(user_id, default_athlete_memory(user_id))
+        doc["chat_history"] = (doc.get("chat_history", []) + [turn])[-CHAT_HISTORY_TURNS:]
+
+
+def set_lesson_node_status(user_id: str, node_id: str, status: str) -> Dict[str, Any]:
+    """Set one curriculum node's status; completing a node activates the next locked one."""
+    if status not in NODE_STATUSES:
+        raise ValueError(f"status must be one of {NODE_STATUSES}")
+    memory = get_athlete_memory(user_id)
+    nodes = [dict(n) for n in memory.get("curriculum_nodes") or []]
+    index = next((i for i, n in enumerate(nodes) if n.get("id") == node_id), None)
+    if index is None:
+        raise ValueError(f"Unknown lesson node: {node_id}")
+    nodes[index]["status"] = status
+    updates: Dict[str, Any] = {"curriculum_nodes": nodes}
+    if status == "completed":
+        completed_at = _utc_now_iso()
+        nodes[index]["completed_at"] = completed_at
+        nxt = next((n for n in nodes[index + 1:] if n.get("status") == "locked"), None)
+        if nxt and not any(n.get("status") == "active" for n in nodes):
+            nxt["status"] = "active"
+        # Watched by the change stream to queue Saint cadence notifications.
+        updates["last_completed_node"] = {"id": node_id, "title": nodes[index].get("title"),
+                                          "completed_at": completed_at}
+    return update_athlete_memory(user_id, updates)
+
+
+# --- Drills catalog with Atlas Search ($search) and regex fallback ---------
+
+def build_drills_catalog() -> List[Dict[str, Any]]:
+    drills: List[Dict[str, Any]] = []
+    for sport in _sports_config.SPORTS_CATALOG.values():
+        for skill in sport.skills:
+            faults = {d: f.name for f in skill.common_faults for d in f.drill_ids}
+            for drill in skill.drills:
+                drills.append({
+                    "drill_id": drill.id,
+                    "sport": sport.id,
+                    "skill_id": skill.id,
+                    "skill_name": skill.name,
+                    "title": drill.title,
+                    "instruction": drill.instruction,
+                    "focus_cue": drill.focus_cue,
+                    "target_reps": drill.target_reps,
+                    "fixes_fault": faults.get(drill.id),
+                    "youtube_url": youtube_search_url(sport.display_name, skill.name, drill.title, "drill"),
+                })
+    return drills
+
+
+def seed_drills_catalog(db: Any) -> int:
+    drills = build_drills_catalog()
+    for drill in drills:
+        db[DRILLS_COLLECTION].replace_one({"drill_id": drill["drill_id"]}, drill, upsert=True)
+    return len(drills)
+
+
+def ensure_drills_search_index(db: Any) -> Dict[str, Any]:
+    """Create the Atlas Search (Lucene) index over drill text fields if it doesn't exist."""
+    from pymongo.operations import SearchIndexModel
+
+    col = db[DRILLS_COLLECTION]
+    if any(idx["name"] == DRILLS_SEARCH_INDEX_NAME for idx in col.list_search_indexes()):
+        return {"index": DRILLS_SEARCH_INDEX_NAME, "action": "exists"}
+    definition = {"mappings": {"dynamic": False, "fields": {
+        "title": {"type": "string"}, "instruction": {"type": "string"},
+        "focus_cue": {"type": "string"}, "skill_name": {"type": "string"},
+        "fixes_fault": {"type": "string"}, "sport": {"type": "token"},
+    }}}
+    try:
+        col.create_search_index(SearchIndexModel(definition=definition, name=DRILLS_SEARCH_INDEX_NAME, type="search"))
+    except PyMongoError as exc:
+        # M0/M2 clusters cap search indexes at 3; search_drills() then uses the regex fallback.
+        return {"index": DRILLS_SEARCH_INDEX_NAME, "action": f"skipped ({exc.__class__.__name__}: "
+                f"{str(exc).split(',')[0]})"}
+    return {"index": DRILLS_SEARCH_INDEX_NAME, "action": "created"}
+
+
+def search_drills(query: str, sport: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
+    """Atlas `$search` over drills_catalog, falling back to regex, then to the in-process catalog."""
+    sport_id = (sport or "").strip().lower() or None
+    text = (query or "").strip()
+    fields = ["title", "instruction", "focus_cue", "skill_name", "fixes_fault"]
+    db = get_db()
+    if db is not None and text:
+        try:
+            search: Dict[str, Any] = {"index": DRILLS_SEARCH_INDEX_NAME,
+                                      "compound": {"must": [{"text": {"query": text, "path": fields}}]}}
+            if sport_id:
+                search["compound"]["filter"] = [{"equals": {"path": "sport", "value": sport_id}}]
+            results = list(db[DRILLS_COLLECTION].aggregate([
+                {"$search": search}, {"$limit": int(limit)}, {"$project": {"_id": 0}},
+            ]))
+            if results:
+                return {"method": "atlas_search", "drills": results}
+        except PyMongoError:
+            pass
+    words = [w for w in _re.split(r"\W+", text) if len(w) > 2]
+    pattern = "|".join(_re.escape(w) for w in words) or ".*"
+    if db is not None:
+        try:
+            match: Dict[str, Any] = {"$or": [{f: {"$regex": pattern, "$options": "i"}} for f in fields]}
+            if sport_id:
+                match["sport"] = sport_id
+            results = list(db[DRILLS_COLLECTION].find(match, {"_id": 0}).limit(int(limit)))
+            if results:
+                return {"method": "regex_fallback", "drills": results}
+        except PyMongoError:
+            pass
+    regex = _re.compile(pattern, _re.I)
+    local = [d for d in build_drills_catalog()
+             if (not sport_id or d["sport"] == sport_id) and any(regex.search(str(d.get(f) or "")) for f in fields)]
+    return {"method": "in_memory_catalog", "drills": local[:limit]}
+
+
+# --- Facilities ($nearSphere on 2dsphere) ----------------------------------
+
+def find_nearby_facilities(lat: float, lng: float, limit: int = 5, max_km: float = 25.0) -> Dict[str, Any]:
+    db = get_db()
+    found: List[Dict[str, Any]] = []
+    method = "in_memory_haversine"
+    if db is not None:
+        try:
+            found = list(db[FACILITIES_COLLECTION].find({"location_geojson": {"$nearSphere": {
+                "$geometry": {"type": "Point", "coordinates": [float(lng), float(lat)]},
+                "$maxDistance": float(max_km) * 1000.0,
+            }}}, {"_id": 0}).limit(int(limit)))
+            method = "mongodb_nearSphere_2dsphere"
+        except PyMongoError:
+            found = []
+    if not found and method != "mongodb_nearSphere_2dsphere":
+        found = sorted((dict(f) for f in SEED_LONDON_FACILITIES),
+                       key=lambda f: _haversine_km(lng, lat, *f["location_geojson"]["coordinates"]))[:limit]
+    for fac in found:
+        flng, flat = fac["location_geojson"]["coordinates"]
+        fac["distance_km"] = round(_haversine_km(float(lng), float(lat), flng, flat), 2)
+    return {"method": method, "facilities": found}
+
+
+# --- Change stream: log mutations, queue Saint cadence on lesson completion ---
+
+def queue_saint_notification(notification: Dict[str, Any]) -> Dict[str, Any]:
+    doc = {"status": "queued", "queued_at": _utc_now_iso(), **notification}
+    db = get_db()
+    if db is not None:
+        try:
+            db[SAINT_QUEUE_COLLECTION].insert_one(dict(doc))
+            return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        _MEMORY_SAINT_QUEUE.append(doc)
+    return doc
+
+
+def handle_athlete_memory_change(change: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Process one change-stream event; returns the Saint notifications it queued."""
+    full = change.get("fullDocument") or {}
+    user_id = full.get("user_id") or "unknown"
+    updated = (change.get("updateDescription") or {}).get("updatedFields") or {}
+    _memory_log.info("athlete_memory %s user=%s fields=%s", change.get("operationType"), user_id,
+                     sorted(updated) if updated else "*")
+    completed = updated.get("last_completed_node") or (
+        full.get("last_completed_node") if change.get("operationType") == "replace" else None)
+    if not completed:
+        return []
+    schedule = full.get("reminder_schedule") or {}
+    return [queue_saint_notification({
+        "user_id": user_id,
+        "type": "lesson_completed",
+        "node_id": completed.get("id"),
+        "node_title": completed.get("title"),
+        "channel": schedule.get("preferred_channel", "whatsapp"),
+        "phone_number": full.get("phone_number"),
+    })]
+
+
+_WATCHER_THREAD: Optional[_threading.Thread] = None
+_WATCHER_STOP = _threading.Event()
+
+
+def start_athlete_memory_watcher() -> bool:
+    """Start a daemon thread on `db.athlete_memory.watch()`; returns False if Atlas is unavailable."""
+    global _WATCHER_THREAD
+    if _WATCHER_THREAD and _WATCHER_THREAD.is_alive():
+        return True
+    if os.environ.get("TEMPO_DISABLE_CHANGE_STREAM", "").lower() in {"1", "true", "yes"}:
+        return False
+    db = get_db()
+    if db is None:
+        return False
+
+    def _run() -> None:
+        while not _WATCHER_STOP.is_set():
+            try:
+                with db[ATHLETE_MEMORY_COLLECTION].watch(full_document="updateLookup",
+                                                         max_await_time_ms=1000) as stream:
+                    while not _WATCHER_STOP.is_set():
+                        change = stream.try_next()
+                        if change is not None:
+                            handle_athlete_memory_change(change)
+            except Exception as exc:
+                _memory_log.warning("athlete_memory change stream restarting: %s", exc)
+                _WATCHER_STOP.wait(5)
+
+    _WATCHER_STOP.clear()
+    _WATCHER_THREAD = _threading.Thread(target=_run, name="athlete-memory-watch", daemon=True)
+    _WATCHER_THREAD.start()
+    return True
+
+
+def stop_athlete_memory_watcher() -> None:
+    _WATCHER_STOP.set()

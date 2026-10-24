@@ -2,7 +2,8 @@
 """Hard-reset sports_coach_db to a fresh-signup state.
 
 Clears all user-owned collections, then seeds only reference data:
-pro archetype strokes and London court facilities (2dsphere). No user is seeded.
+pro archetype strokes, the drills catalog (Atlas Search) and London court
+facilities (2dsphere). No user is seeded.
 Idempotent: safe to run repeatedly.
 
 Uses MONGODB_URI (env or backend/.env), defaulting to mongodb://127.0.0.1:27017.
@@ -23,22 +24,8 @@ CLEARED_COLLECTIONS = [
     "user_schedules",
     "strokes",
     "conversation_history",
-]
-FACILITIES_COLLECTION = "facilities"
-
-LONDON_FACILITIES = [
-    {"facility_id": "fac_islington_tennis_centre", "name": "Islington Tennis Centre", "postcode": "N7 9RQ",
-     "location_geojson": {"type": "Point", "coordinates": [-0.1196, 51.5524]}},
-    {"facility_id": "fac_westway_sports_centre", "name": "Westway Sports & Fitness Centre", "postcode": "W10 6RP",
-     "location_geojson": {"type": "Point", "coordinates": [-0.2154, 51.5207]}},
-    {"facility_id": "fac_regents_park_tennis", "name": "Regent's Park Tennis Centre", "postcode": "NW1 4NU",
-     "location_geojson": {"type": "Point", "coordinates": [-0.1530, 51.5285]}},
-    {"facility_id": "fac_paddington_rec", "name": "Paddington Recreation Ground", "postcode": "W9 1PD",
-     "location_geojson": {"type": "Point", "coordinates": [-0.1918, 51.5300]}},
-    {"facility_id": "fac_lee_valley_hockey_tennis", "name": "Lee Valley Hockey & Tennis Centre", "postcode": "E20 3AB",
-     "location_geojson": {"type": "Point", "coordinates": [-0.0151, 51.5507]}},
-    {"facility_id": "fac_ucl_bloomsbury", "name": "Bloomsbury Fitness - UCL", "postcode": "WC1E 7HY",
-     "location_geojson": {"type": "Point", "coordinates": [-0.1340, 51.5246]}},
+    "athlete_memory",
+    "saint_notifications",
 ]
 
 
@@ -64,11 +51,15 @@ def main() -> int:
 
     print(f"pose vector index: {db_mongo.ensure_pose_vector_index(db)['action']} (filters: is_pro_reference, sport)")
 
-    facilities = db[FACILITIES_COLLECTION]
+    drill_count = db_mongo.seed_drills_catalog(db)
+    print(f"seeded drills_catalog: {drill_count} drills; search index "
+          f"{db_mongo.ensure_drills_search_index(db)['action']}")
+
+    facilities = db[db_mongo.FACILITIES_COLLECTION]
     facilities.create_index([("location_geojson", GEOSPHERE)], name="location_2dsphere_idx")
-    for fac in LONDON_FACILITIES:
+    for fac in db_mongo.SEED_LONDON_FACILITIES:
         facilities.replace_one({"facility_id": fac["facility_id"]}, {**fac, "city": "London"}, upsert=True)
-    print(f"seeded facilities: {len(LONDON_FACILITIES)} London courts (2dsphere indexed)")
+    print(f"seeded facilities: {len(db_mongo.SEED_LONDON_FACILITIES)} London courts (2dsphere indexed)")
 
     print(f"reset complete: {db_mongo.DB_NAME}")
     return 0
