@@ -774,9 +774,10 @@ def live_laptop_dashboard() -> str:
 @app.get("/architecture", response_class=HTMLResponse)
 def pitch_deck_architecture_diagram() -> str:
     """
-    Clean, human-crafted engineering blueprint architecture diagram at
-    `http://localhost:8000/architecture` with muted architectural colors and varied geometric shapes
-    (sharp rectangles, database cylinders, chamfered verification gate, and skewed I/O parallelograms).
+    Minimalist engineering architecture diagram at `http://localhost:8000/architecture`
+    using solid, flat base colors (slate blue, warm amber, sage green, soft indigo, dusty coral)
+    and varied geometric shapes (skewed I/O parallelograms, sharp rectangles, database cylinders,
+    chamfered verification octagon, and double-bordered HITL gate).
     """
     return """<!DOCTYPE html>
 <html lang="en">
@@ -786,149 +787,178 @@ def pitch_deck_architecture_diagram() -> str:
   <title>Tempo — System Architecture</title>
   <style>
     :root {
-      --bg: #f6f5f1;
-      --surface: #ffffff;
-      --ink: #18181b;
-      --muted: #52525b;
-      --slate: #334155;
-      --forest: #1f4e3d;
-      --forest-bg: #eef5f2;
-      --terracotta: #9a3412;
-      --terracotta-bg: #fdf3ef;
-      --navy: #1e3a5f;
-      --navy-bg: #eff4f9;
-      --ochre: #854d0e;
-      --ochre-bg: #fef9ee;
+      --canvas: #e9edf2;
+      --ink: #1e293b;
+      --muted: #475569;
+
+      /* Plain / Flat Base Palette */
+      --blue-zone: #dce6f7;
+      --blue-fill: #eff4ff;
+      --blue-cap: #bdd0f2;
+      --blue-border: #2b4c7e;
+
+      --amber-zone: #f9ebd2;
+      --amber-fill: #fff8eb;
+      --amber-gate: #f6d592;
+      --amber-border: #8c5319;
+
+      --green-zone: #d7ede1;
+      --green-fill: #eef8f2;
+      --green-cap: #addbc2;
+      --green-border: #1b5e3c;
+
+      --indigo-zone: #e3dff5;
+      --indigo-fill: #f3f1fc;
+      --indigo-border: #3f3478;
+
+      --coral-fill: #faddd9;
+      --coral-border: #8f2d22;
     }
     * {
       box-sizing: border-box;
-      font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: "Inter", "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     body {
       margin: 0;
-      background-color: var(--bg);
-      background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
-      background-size: 20px 20px;
+      background-color: var(--canvas);
+      background-image:
+        linear-gradient(to right, rgba(30, 41, 59, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(30, 41, 59, 0.05) 1px, transparent 1px);
+      background-size: 24px 24px;
       color: var(--ink);
-      padding: 28px 36px;
+      padding: 24px 32px;
       min-height: 100vh;
     }
+
+    /* Top Title Bar */
     .header {
+      background: #ffffff;
+      border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+      padding: 14px 20px;
+      margin-bottom: 20px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
-      border-bottom: 2px solid var(--ink);
-      padding-bottom: 12px;
-      margin-bottom: 24px;
-      background: rgba(246, 245, 241, 0.9);
+      align-items: center;
     }
     .header h1 {
       margin: 0;
-      font-size: 22px;
-      font-weight: 700;
+      font-size: 20px;
+      font-weight: 800;
       letter-spacing: -0.3px;
       color: var(--ink);
     }
     .header p {
-      margin: 4px 0 0;
-      font-size: 13px;
+      margin: 3px 0 0;
+      font-size: 12.5px;
       color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     .legend {
       display: flex;
-      gap: 14px;
+      gap: 10px;
       font-size: 11px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      color: var(--ink);
+      font-weight: 600;
     }
-    .legend-item {
+    .legend-chip {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 9px;
-      border: 1px solid var(--ink);
-      background: var(--surface);
-      box-shadow: 2px 2px 0 var(--ink);
+      padding: 5px 10px;
+      border: 1.5px solid var(--ink);
+      background: #f8fafc;
     }
     .swatch {
-      width: 10px;
-      height: 10px;
-      border: 1px solid var(--ink);
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid var(--ink);
+      display: inline-block;
     }
 
+    /* 4-Stage Pipeline Grid */
     .arch-grid {
       display: grid;
-      grid-template-columns: 1fr 38px 1.15fr 38px 1.35fr 38px 1.15fr;
+      grid-template-columns: 1fr 54px 1.12fr 54px 1.32fr 54px 1.15fr;
       align-items: stretch;
     }
+
     .zone {
-      background: rgba(255, 255, 255, 0.78);
-      border: 1.5px solid var(--ink);
-      padding: 16px;
+      border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      position: relative;
     }
-    .zone-mongo {
-      background: var(--forest-bg);
-      border: 2px solid var(--forest);
-    }
-    .zone-ai {
-      background: var(--navy-bg);
-      border: 2px solid var(--navy);
-    }
-    .zone-header {
+    .zone-blue { background: var(--blue-zone); border-color: var(--blue-border); box-shadow: 4px 4px 0 var(--blue-border); }
+    .zone-amber { background: var(--amber-zone); border-color: var(--amber-border); box-shadow: 4px 4px 0 var(--amber-border); }
+    .zone-green { background: var(--green-zone); border-color: var(--green-border); box-shadow: 4px 4px 0 var(--green-border); }
+    .zone-indigo { background: var(--indigo-zone); border-color: var(--indigo-border); box-shadow: 4px 4px 0 var(--indigo-border); }
+
+    .zone-banner {
+      padding: 10px 14px;
+      color: #ffffff;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1.5px solid var(--ink);
-      padding-bottom: 8px;
+      border-bottom: 2px solid var(--ink);
     }
+    .zone-blue .zone-banner { background: var(--blue-border); border-color: var(--blue-border); }
+    .zone-amber .zone-banner { background: var(--amber-border); border-color: var(--amber-border); }
+    .zone-green .zone-banner { background: var(--green-border); border-color: var(--green-border); }
+    .zone-indigo .zone-banner { background: var(--indigo-border); border-color: var(--indigo-border); }
+
     .zone-title {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.6px;
     }
     .zone-file {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 11px;
-      background: var(--ink);
-      color: #fff;
-      padding: 2px 6px;
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 7px;
+      font-weight: 600;
     }
 
-    /* SHAPE 1: Sharp Architectural Box with Offset Brutalist Shadow */
-    .box-sharp {
-      background: var(--surface);
-      border: 1.5px solid var(--ink);
-      border-radius: 0;
-      padding: 12px 13px;
-      box-shadow: 3px 3px 0 var(--ink);
+    .zone-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+      flex: 1;
     }
 
-    /* SHAPE 2: Skewed I/O Parallelogram for Edge Streams & Payloads */
+    /* SHAPE 1: Skewed I/O Parallelogram (Edge Inputs) */
     .shape-io {
-      background: var(--surface);
-      border: 1.5px solid var(--slate);
-      padding: 12px 16px;
-      transform: skewX(-6deg);
-      box-shadow: 3px 3px 0 var(--slate);
+      background: var(--blue-fill);
+      border: 2px solid var(--blue-border);
+      padding: 11px 14px;
+      transform: skewX(-5deg);
+      box-shadow: 3px 3px 0 rgba(43, 76, 126, 0.25);
     }
     .shape-io-inner {
-      transform: skewX(6deg);
+      transform: skewX(5deg);
     }
 
-    /* SHAPE 3: Database Cylinder for MongoDB Collections */
+    /* SHAPE 2: Sharp Architectural Rectangle */
+    .shape-rect {
+      background: #ffffff;
+      border: 2px solid var(--ink);
+      padding: 11px 13px;
+      box-shadow: 3px 3px 0 rgba(30, 41, 59, 0.2);
+    }
+    .zone-blue .shape-rect { background: var(--blue-fill); border-color: var(--blue-border); }
+    .zone-amber .shape-rect { background: var(--amber-fill); border-color: var(--amber-border); }
+    .zone-green .shape-rect { background: var(--green-fill); border-color: var(--green-border); }
+    .zone-indigo .shape-rect { background: var(--indigo-fill); border-color: var(--indigo-border); }
+
+    /* SHAPE 3: Database Cylinder (MongoDB Collections) */
     .shape-cylinder {
-      background: var(--surface);
-      border: 1.5px solid var(--forest);
-      border-radius: 50% / 12px;
-      padding: 16px 13px 12px;
+      background: var(--green-fill);
+      border: 2px solid var(--green-border);
+      border-radius: 50% / 13px;
+      padding: 18px 13px 11px;
       position: relative;
-      box-shadow: 0 3px 0 var(--forest);
+      box-shadow: 0 3px 0 var(--green-border);
     }
     .shape-cylinder::before {
       content: "";
@@ -936,248 +966,377 @@ def pitch_deck_architecture_diagram() -> str:
       top: 0;
       left: 0;
       right: 0;
-      height: 18px;
-      border-bottom: 1.5px solid var(--forest);
-      border-radius: 50% / 9px;
-      background: #dcece5;
-      pointer-events: none;
+      height: 16px;
+      background: var(--green-cap);
+      border-bottom: 2px solid var(--green-border);
+      border-radius: 50% / 10px;
     }
-    .shape-cylinder h3 {
-      margin-top: 6px !important;
-    }
-
-    /* SHAPE 4: Chamfered Octagon / Cut-Corner Gate for Verification Loop */
-    .shape-chamfer {
-      background: var(--ochre-bg);
-      border: 2px solid var(--ochre);
-      padding: 13px 14px;
-      clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px);
+    .shape-cylinder .node-head {
+      margin-top: 4px;
     }
 
-    /* SHAPE 5: Double-Bordered Stamped Action Card for HITL */
-    .shape-double {
-      background: var(--terracotta-bg);
-      border: 3px double var(--terracotta);
-      padding: 12px 13px;
+    /* SHAPE 4: Chamfered Octagon (Hard Verification Gate) */
+    .shape-octagon {
+      background: var(--amber-gate);
+      border: 2px solid var(--amber-border);
+      padding: 12px 14px;
+      clip-path: polygon(
+        11px 0, calc(100% - 11px) 0,
+        100% 11px, 100% calc(100% - 11px),
+        calc(100% - 11px) 100%, 11px 100%,
+        0 calc(100% - 11px), 0 11px
+      );
     }
 
+    /* SHAPE 5: Hexagonal / Double-Framed Stamped Gate (Human-in-the-Loop) */
+    .shape-hitl {
+      background: var(--coral-fill);
+      border: 3px double var(--coral-border);
+      padding: 11px 13px;
+      box-shadow: 3px 3px 0 rgba(143, 45, 34, 0.22);
+    }
+
+    .node-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
     .node-title {
-      margin: 0 0 4px;
+      margin: 0;
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--ink);
+    }
+    .node-kind {
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      background: rgba(30, 41, 59, 0.1);
+      color: var(--ink);
+      letter-spacing: 0.4px;
     }
     .node-desc {
       margin: 0;
       font-size: 11.5px;
       color: var(--muted);
-      line-height: 1.4;
+      line-height: 1.42;
     }
-    .mono-tag {
-      display: inline-block;
-      margin-top: 6px;
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 7px;
+    }
+    .mono-pill {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 10.5px;
+      font-size: 10px;
+      font-weight: 600;
       padding: 2px 6px;
-      background: #f1f5f9;
+      background: #ffffff;
       color: var(--ink);
-      border: 1px solid #94a3b8;
+      border: 1px solid rgba(30, 41, 59, 0.35);
     }
 
+    /* Connectors between columns */
     .connector {
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      color: var(--ink);
+      gap: 8px;
     }
-    .connector-line {
-      font-size: 18px;
-      font-weight: 700;
-    }
-    .connector-text {
+    .conn-pill {
       writing-mode: vertical-rl;
       text-orientation: mixed;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 10px;
-      color: var(--muted);
-      margin-top: 6px;
+      font-weight: 700;
+      background: #ffffff;
+      border: 1.5px solid var(--ink);
+      padding: 7px 4px;
+      color: var(--ink);
       letter-spacing: 0.5px;
     }
 
-    .footer-bar {
+    /* Bottom Closed-Loop Swimlane */
+    .swimlane {
       margin-top: 18px;
-      background: var(--surface);
-      border: 1.5px solid var(--ink);
-      box-shadow: 3px 3px 0 var(--ink);
-      padding: 11px 18px;
-      display: flex;
-      justify-content: space-between;
+      background: #ffffff;
+      border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+      padding: 12px 18px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
-      font-size: 12px;
+      gap: 18px;
     }
-    .footer-bar code {
+    .swim-title {
+      font-size: 11.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      background: var(--ink);
+      color: #ffffff;
+      padding: 5px 10px;
+      letter-spacing: 0.5px;
+    }
+    .swim-steps {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    .swim-step {
+      padding: 4px 10px;
+      border: 1.5px solid var(--ink);
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      background: #f4f4f5;
-      padding: 2px 5px;
-      border: 1px solid #d4d4d8;
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
   <div class="header">
     <div>
-      <h1>TEMPO — SYSTEM ARCHITECTURE &amp; DATA PIPELINE</h1>
-      <p>Video &amp; Apple Watch HealthKit ETL &rarr; MongoDB Atlas Multi-Engine &rarr; Gemini 4 Argon + Saint AI Agent</p>
+      <h1>TEMPO — MULTIMODAL RACKET BIOMECHANICS &amp; AUTONOMOUS COACH</h1>
+      <p>System Blueprint: Edge Video &amp; Apple Watch HealthKit &rarr; FastAPI Pose/Biometric ETL &rarr; MongoDB Atlas (5 Engines) &rarr; Gemini 4 Argon &amp; Saint AI</p>
     </div>
     <div class="legend">
-      <div class="legend-item"><span class="swatch" style="background:#dcece5;border-color:#1f4e3d;border-radius:50%;"></span>Cylinder (DB Collection)</div>
-      <div class="legend-item"><span class="swatch" style="background:#fef9ee;border-color:#854d0e;"></span>Chamfered Octagon (Rule Gate)</div>
-      <div class="legend-item"><span class="swatch" style="background:#ffffff;transform:skewX(-12deg);"></span>Parallelogram (I/O Stream)</div>
-      <div class="legend-item"><span class="swatch" style="background:#ffffff;"></span>Sharp Rect (Compute Module)</div>
+      <div class="legend-chip"><span class="swatch" style="background:var(--blue-fill);border-color:var(--blue-border);transform:skewX(-12deg);"></span>I/O Stream</div>
+      <div class="legend-chip"><span class="swatch" style="background:var(--amber-gate);border-color:var(--amber-border);"></span>Rule Gate</div>
+      <div class="legend-chip"><span class="swatch" style="background:var(--green-cap);border-color:var(--green-border);border-radius:50%;"></span>MongoDB Store</div>
+      <div class="legend-chip"><span class="swatch" style="background:var(--indigo-fill);border-color:var(--indigo-border);"></span>AI / Compute</div>
+      <div class="legend-chip"><span class="swatch" style="background:var(--coral-fill);border-color:var(--coral-border);"></span>HITL Approval</div>
     </div>
   </div>
 
   <div class="arch-grid">
-    <!-- COLUMN 1: CLIENT & WEARABLE I/O -->
-    <div class="zone">
-      <div class="zone-header">
-        <span class="zone-title">01 / Edge &amp; Wearable I/O</span>
+    <!-- STAGE 1: EDGE CAPTURE & ANDROID CLIENT -->
+    <div class="zone zone-blue">
+      <div class="zone-banner">
+        <span class="zone-title">01. Edge &amp; Wearable Capture</span>
         <span class="zone-file">user_1</span>
       </div>
-
-      <div class="shape-io">
-        <div class="shape-io-inner">
-          <h3 class="node-title">Apple Watch HealthKit Stream</h3>
-          <p class="node-desc">Captures Heart Rate (BPM), HRV SDNN (ms), and Active Energy (kcal) via iOS Shortcut or <code>export.zip</code>.</p>
-          <span class="mono-tag">POST /pipeline/etl-apple-watch</span>
+      <div class="zone-body">
+        <div class="shape-io">
+          <div class="shape-io-inner">
+            <div class="node-head">
+              <h3 class="node-title">Apple Watch HealthKit</h3>
+              <span class="node-kind">Sensor Input</span>
+            </div>
+            <p class="node-desc">Streams live Heart Rate (BPM), HRV SDNN (ms), and Active Energy (kcal) via iOS Shortcut or Health <code>export.zip</code>.</p>
+            <div class="meta-row">
+              <span class="mono-pill">POST /pipeline/etl-apple-watch</span>
+              <span class="mono-pill">1Hz Biometrics</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="shape-io">
-        <div class="shape-io-inner">
-          <h3 class="node-title">Overhead Stroke Video + GPS</h3>
-          <p class="node-desc">Smartphone <code>.mp4</code> capture of overhead serve/smash paired with London GPS coordinates (<code>lon, lat</code>).</p>
-          <span class="mono-tag">POST /pipeline/analyze-stroke</span>
+        <div class="shape-io">
+          <div class="shape-io-inner">
+            <div class="node-head">
+              <h3 class="node-title">Stroke Video + London GPS</h3>
+              <span class="node-kind">Camera Input</span>
+            </div>
+            <p class="node-desc">Smartphone <code>.mp4</code> overhead serve/smash clip paired with court GPS coordinates (<code>user_lon, user_lat</code>).</p>
+            <div class="meta-row">
+              <span class="mono-pill">POST /pipeline/analyze-stroke</span>
+              <span class="mono-pill">Multipart .mp4</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="box-sharp">
-        <h3 class="node-title">Android Jetpack Compose Client</h3>
-        <p class="node-desc">Kotlin Retrofit client + OkHttp Server-Sent Events (SSE) subscriber for live watch telemetry and approval cards.</p>
-        <span class="mono-tag">TempoApiClient.kt</span>
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">Android Jetpack Compose App</h3>
+            <span class="node-kind">Mobile UI</span>
+          </div>
+          <p class="node-desc">Kotlin Retrofit client + OkHttp Server-Sent Events (SSE) listener rendering live watch fatigue rings &amp; approval cards.</p>
+          <div class="meta-row">
+            <span class="mono-pill">TempoApiClient.kt</span>
+            <span class="mono-pill">GET /pipeline/live-stream</span>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="connector">
-      <span class="connector-line">===&gt;</span>
-      <span class="connector-text">HTTP Multipart + JSON</span>
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
+      <span class="conn-pill">MULTIPART + JSON</span>
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
     </div>
 
-    <!-- COLUMN 2: FASTAPI + ETL + VERIFICATION GATE -->
-    <div class="zone">
-      <div class="zone-header">
-        <span class="zone-title">02 / FastAPI &amp; Pose ETL</span>
+    <!-- STAGE 2: FASTAPI + MULTIMODAL ETL -->
+    <div class="zone zone-amber">
+      <div class="zone-banner">
+        <span class="zone-title">02. FastAPI &amp; Multimodal ETL</span>
         <span class="zone-file">etl_pose.py</span>
       </div>
+      <div class="zone-body">
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">OpenCV + MediaPipe 3D Pose</h3>
+            <span class="node-kind">Vision ETL</span>
+          </div>
+          <p class="node-desc">Scans frames to isolate peak overhead contact (<code>min RIGHT_WRIST.y</code>) and computes 5 3D joint angles + normalized reach height.</p>
+          <div class="meta-row">
+            <span class="mono-pill">[elbow, shoulder, trunk, knee, l_arm, height]</span>
+          </div>
+        </div>
 
-      <div class="box-sharp">
-        <h3 class="node-title">OpenCV + MediaPipe 3D Pose</h3>
-        <p class="node-desc">Isolates peak shuttle/ball contact frame (<code>min RIGHT_WRIST.y</code>) and extracts 5 3D joint angles + normalized reach height.</p>
-        <span class="mono-tag">pose_vector: float[6]</span>
-      </div>
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">Biometric Load Normalizer</h3>
+            <span class="node-kind">Watch ETL</span>
+          </div>
+          <p class="node-desc">Parses HealthKit XML/ZIP/JSON into a <code>[0–100]</code> Fatigue Index and classifies cardiovascular load state.</p>
+          <div class="meta-row">
+            <span class="mono-pill">HIGH_FATIGUE_AEROBIC_OVERLOAD</span>
+          </div>
+        </div>
 
-      <div class="box-sharp">
-        <h3 class="node-title">Biometric Load Normalizer</h3>
-        <p class="node-desc">Computes <code>[0–100]</code> Fatigue Index from HR, HRV SDNN, and kcal; classifies aerobic overload state.</p>
-        <span class="mono-tag">HIGH_FATIGUE_AEROBIC_OVERLOAD</span>
-      </div>
-
-      <div class="shape-chamfer">
-        <h3 class="node-title" style="color:var(--ochre);">◇ Biomechanical Verification Gate</h3>
-        <p class="node-desc" style="color:#713f12;">Deterministic Pass/Fail threshold evaluated prior to LLM synthesis:</p>
-        <span class="mono-tag" style="background:#fff;border-color:var(--ochre);color:var(--ochre);font-weight:700;">
-          right_elbow_contact_deg &gt;= 165.0° &rarr; PASS | FAIL
-        </span>
-      </div>
-    </div>
-
-    <div class="connector">
-      <span class="connector-line">===&gt;</span>
-      <span class="connector-text">6D Vector + 1Hz Stream</span>
-    </div>
-
-    <!-- COLUMN 3: MONGODB ATLAS (CYLINDERS) -->
-    <div class="zone zone-mongo">
-      <div class="zone-header" style="border-color:var(--forest);">
-        <span class="zone-title" style="color:var(--forest);">03 / MongoDB Atlas Data Layer</span>
-        <span class="zone-file" style="background:var(--forest);">db_mongo.py</span>
-      </div>
-
-      <div class="shape-cylinder">
-        <h3 class="node-title">strokes • Atlas $vectorSearch</h3>
-        <p class="node-desc">Cosine similarity search against seeded pro benchmarks: <strong>Roger Federer (176.5°)</strong>, <strong>Serena (175.5°)</strong>, <strong>Djokovic (174.0°)</strong>, <strong>Alcaraz</strong>, <strong>Sinner</strong>, <strong>Nadal</strong>.</p>
-        <span class="mono-tag">index: pose_vector_index</span>
-      </div>
-
-      <div class="shape-cylinder">
-        <h3 class="node-title">watch_telemetry_ts • Time-Series</h3>
-        <p class="node-desc">Native MongoDB Time-Series collection with <code>$setWindowFields</code> computing 3-sample moving-average HR &amp; Fatigue.</p>
-        <span class="mono-tag">granularity: "seconds"</span>
-      </div>
-
-      <div class="shape-cylinder">
-        <h3 class="node-title">players • 2dsphere $geoNear</h3>
-        <p class="node-desc">Combines 75% biomechanical vector compatibility + 25% physical distance (km) across London courts (UCL, Finsbury, Regent's Park).</p>
-        <span class="mono-tag">location_2dsphere_idx</span>
-      </div>
-
-      <div class="box-sharp" style="border-color:var(--forest);box-shadow:3px 3px 0 var(--forest);">
-        <h3 class="node-title">Longitudinal $facet + $bucket Pipeline</h3>
-        <p class="node-desc">Correlates HR Zones (&lt;145, 145–165, &gt;165 BPM) against <strong>-18.4° fatigue-induced elbow angle drop</strong>.</p>
-        <span class="mono-tag">GET /pipeline/analytics/user_1</span>
+        <div class="shape-octagon">
+          <div class="node-head">
+            <h3 class="node-title">Biomechanical Verification Gate</h3>
+            <span class="node-kind" style="background:#8c5319;color:#fff;">Pass / Fail Loop</span>
+          </div>
+          <p class="node-desc" style="color:#3b2106;font-weight:500;">Deterministic threshold check executed prior to Gemini 4 Argon reasoning:</p>
+          <div class="meta-row">
+            <span class="mono-pill" style="border-color:#8c5319;font-weight:800;">right_elbow_contact_deg &gt;= 165.0° &rarr; PASS | FAIL</span>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="connector">
-      <span class="connector-line">===&gt;</span>
-      <span class="connector-text">Pro Match + Context</span>
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
+      <span class="conn-pill">6D VECTOR + 1HZ TS</span>
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
     </div>
 
-    <!-- COLUMN 4: GEMINI 4 ARGON + SAINT AI -->
-    <div class="zone zone-ai">
-      <div class="zone-header" style="border-color:var(--navy);">
-        <span class="zone-title" style="color:var(--navy);">04 / Reasoning &amp; HITL Agent</span>
-        <span class="zone-file" style="background:var(--navy);">agent_argon_saint.py</span>
+    <!-- STAGE 3: MONGODB ATLAS -->
+    <div class="zone zone-green">
+      <div class="zone-banner">
+        <span class="zone-title">03. MongoDB Atlas Data Layer</span>
+        <span class="zone-file">db_mongo.py</span>
       </div>
+      <div class="zone-body">
+        <div class="shape-cylinder">
+          <div class="node-head">
+            <h3 class="node-title">strokes • Atlas $vectorSearch</h3>
+            <span class="node-kind">6D Cosine Index</span>
+          </div>
+          <p class="node-desc">Matches <code>user_1</code> against Tennis GOAT benchmarks: <strong>Roger Federer (176.5°)</strong>, <strong>Serena (175.5°)</strong>, <strong>Djokovic (174.0°)</strong>, <strong>Alcaraz</strong>, <strong>Sinner</strong>, <strong>Nadal</strong>.</p>
+          <div class="meta-row">
+            <span class="mono-pill">index: pose_vector_index</span>
+            <span class="mono-pill">numDimensions: 6</span>
+          </div>
+        </div>
 
-      <div class="box-sharp" style="border-color:var(--navy);box-shadow:3px 3px 0 var(--navy);">
-        <h3 class="node-title">Google Gemini 4 Argon</h3>
-        <p class="node-desc">Synthesizes 3D joint angles, Apple Watch HRV/HR fatigue, and Federer/Djokovic benchmark into a structured diagnosis &amp; live drill prescription.</p>
-        <span class="mono-tag">client.interactions.create(thinking_level="high")</span>
+        <div class="shape-cylinder">
+          <div class="node-head">
+            <h3 class="node-title">watch_telemetry_ts • Time-Series</h3>
+            <span class="node-kind">Time-Series DB</span>
+          </div>
+          <p class="node-desc">Stores 1Hz Apple Watch samples and runs <code>$setWindowFields</code> for 3-sample moving-average Heart Rate &amp; Fatigue.</p>
+          <div class="meta-row">
+            <span class="mono-pill">timeField: "timestamp"</span>
+            <span class="mono-pill">$setWindowFields</span>
+          </div>
+        </div>
+
+        <div class="shape-cylinder">
+          <div class="node-head">
+            <h3 class="node-title">players • 2dsphere $geoNear</h3>
+            <span class="node-kind">Geospatial + Vector</span>
+          </div>
+          <p class="node-desc">Ranks London partners (UCL, Finsbury, Regent's Park, Roehampton) by 75% vector compatibility + 25% proximity (km).</p>
+          <div class="meta-row">
+            <span class="mono-pill">location_2dsphere_idx</span>
+            <span class="mono-pill">GeoJSON Point</span>
+          </div>
+        </div>
+
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">Longitudinal $facet + $bucket</h3>
+            <span class="node-kind">Aggregation</span>
+          </div>
+          <p class="node-desc">Correlates HR Zones (&lt;145, 145–165, &gt;165 BPM) against <strong>-18.4° fatigue-induced elbow angle collapse</strong>.</p>
+          <div class="meta-row">
+            <span class="mono-pill">GET /pipeline/analytics/user_1</span>
+          </div>
+        </div>
       </div>
+    </div>
 
-      <div class="box-sharp" style="border-color:var(--navy);box-shadow:3px 3px 0 var(--navy);">
-        <h3 class="node-title">Saint AI Autonomous Coach</h3>
-        <p class="node-desc">Constructs proactive training notification, Court 3 reservation at Finsbury/UCL, and London partner invite for <code>user_1</code>.</p>
-        <span class="mono-tag">requires_human_approval: true</span>
+    <div class="connector">
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
+      <span class="conn-pill">PRO + GEO CONTEXT</span>
+      <svg width="36" height="24" viewBox="0 0 36 24"><path d="M2 12h28M24 5l8 7-8 7" stroke="#1e293b" stroke-width="2.5" fill="none"/></svg>
+    </div>
+
+    <!-- STAGE 4: GEMINI 4 ARGON + SAINT AI -->
+    <div class="zone zone-indigo">
+      <div class="zone-banner">
+        <span class="zone-title">04. Reasoning &amp; Saint AI Agent</span>
+        <span class="zone-file">agent_argon_saint.py</span>
       </div>
+      <div class="zone-body">
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">Google Gemini 4 Argon</h3>
+            <span class="node-kind">Interactions API</span>
+          </div>
+          <p class="node-desc">Synthesizes 3D joint angles, Apple Watch HRV/HR fatigue, and Federer/Djokovic benchmark into a diagnosis &amp; live drill prescription.</p>
+          <div class="meta-row">
+            <span class="mono-pill">model: "gemini-4-argon"</span>
+            <span class="mono-pill">thinking_level: "high"</span>
+          </div>
+        </div>
 
-      <div class="shape-double">
-        <h3 class="node-title" style="color:var(--terracotta);">Human-in-the-Loop Approval Gate</h3>
-        <p class="node-desc">Blocks external court booking until <code>user_1</code> explicitly confirms on Android; dispatches webhook upon approval.</p>
-        <span class="mono-tag" style="border-color:var(--terracotta);color:var(--terracotta);">POST /pipeline/approve-saint-action</span>
+        <div class="shape-rect">
+          <div class="node-head">
+            <h3 class="node-title">Saint AI Autonomous Coach</h3>
+            <span class="node-kind">Agent Job</span>
+          </div>
+          <p class="node-desc">Builds proactive training notification, stages Court 3 booking (Finsbury / UCL), and prepares London partner invite for <code>user_1</code>.</p>
+          <div class="meta-row">
+            <span class="mono-pill">saint_agent_job</span>
+            <span class="mono-pill">requires_human_approval: true</span>
+          </div>
+        </div>
+
+        <div class="shape-hitl">
+          <div class="node-head">
+            <h3 class="node-title" style="color:var(--coral-border);">Human-in-the-Loop Approval Gate</h3>
+            <span class="node-kind" style="background:var(--coral-border);color:#fff;">Safety Gate</span>
+          </div>
+          <p class="node-desc" style="color:#4a1610;">Blocks external court booking &amp; webhook dispatch until <code>user_1</code> explicitly approves on the Android app.</p>
+          <div class="meta-row">
+            <span class="mono-pill" style="border-color:var(--coral-border);color:var(--coral-border);font-weight:700;">POST /pipeline/approve-saint-action</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="footer-bar">
-    <div>
-      <strong>Asynchronous Return Bus:</strong> FastAPI + MongoDB broadcast live updates via <code>GET /pipeline/live-stream</code> (Server-Sent Events) &rarr; Android Jetpack Compose UI &amp; <code>/dashboard</code>
+  <div class="swimlane">
+    <span class="swim-title">Real-Time Closed Loop</span>
+    <div class="swim-steps">
+      <span class="swim-step" style="background:var(--blue-fill);">1. Watch / Video Ingest</span>
+      <span>&rarr;</span>
+      <span class="swim-step" style="background:var(--amber-fill);">2. 165.0° Elbow Gate</span>
+      <span>&rarr;</span>
+      <span class="swim-step" style="background:var(--green-fill);">3. Atlas $vectorSearch + $geoNear</span>
+      <span>&rarr;</span>
+      <span class="swim-step" style="background:var(--indigo-fill);">4. Gemini 4 Argon JSON</span>
+      <span>&rarr;</span>
+      <span class="swim-step" style="background:var(--coral-fill);">5. SSE Push &amp; HITL Court Booking</span>
     </div>
-    <div style="font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">
-      REV 2.1 • ARCHITECTURAL BLUEPRINT
-    </div>
+    <span style="font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);font-weight:700;">tempo.ecp5gee.mongodb.net</span>
   </div>
 </body>
 </html>"""
