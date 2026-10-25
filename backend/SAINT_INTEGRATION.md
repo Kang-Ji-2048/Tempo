@@ -35,7 +35,7 @@ Action states: `processing`, `declined`, `executed_mock`, `needs_review`. A prov
 
 Tempo pushes events Saint did not ask for (`backend/saint_events.py::Event` is the single schema: type, event_id, user, summary, suggested_command, an optional signed proposal, data, occurred_at). Events never carry side effects: Saint shows the attached proposal to the player and, after a yes, posts it to the decision endpoint like any other proposal. If it has expired, Saint sends `suggested_command` to `POST /command`.
 
-- `argon_verdict` fires from the analysis pipeline when the elbow check fails. It proposes an indoor court tomorrow at the player's preferred time, with the drill in the summary. A PASS sends nothing.
+- `argon_verdict` fires from the analysis pipeline when the elbow check fails. It proposes an indoor court tomorrow at the player's preferred time, with the drill in the summary. A PASS sends nothing, unless it follows a FAIL for the same player: then `fix_verified` carries the before and after elbow angles, which closes the verification loop.
 - `court_slot_opened` is fired by `POST /api/v1/saint/events/mock-slot-opened/{user}`, standing in for a venue provider's availability feed. It proposes 10:00 next Saturday in the saved home area.
 
 - `coaching_job` carries the Argon `saint_agent_job`, both after analysis and after a legacy `/pipeline/approve-saint-action` approval (`agent_argon_saint.dispatch_saint_webhook`).
@@ -44,6 +44,8 @@ Tempo pushes events Saint did not ask for (`backend/saint_events.py::Event` is t
 All Tempo-to-Saint traffic now uses this one schema. Events POST to `SAINT_WEBHOOK_URL` with `X-Tempo-Signature: sha256=<HMAC of the raw body with TEMPO_WEBHOOK_SECRET>`. Without a URL they are staged. Every event is logged in `saint_event_log` with its delivery status.
 
 `GET /api/v1/saint/tools` returns the OpenAPI document limited to the routes a `saint` credential may call, for Saint to load as tools.
+
+Demo recording steps: [docs/SAINT_RUNTHROUGH.md](../docs/SAINT_RUNTHROUGH.md).
 
 ## Run
 

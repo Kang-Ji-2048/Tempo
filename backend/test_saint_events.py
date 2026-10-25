@@ -56,6 +56,14 @@ class SaintEventTests(unittest.TestCase):
   params=event.proposal.action.params
   self.assertEqual((params.sport,params.starts_at.hour,params.starts_at.minute),('tennis',18,30))
   self.assertIn('Shadow swings',event.summary);self.assertEqual(event.data['right_elbow_contact_deg'],152.0)
+ def test_pass_after_fail_verifies_the_fix_once(self):
+  events.argon_verdict('alice',{'verification_status':'FAIL','right_elbow_contact_deg':152.0,'threshold_deg':165.0})
+  self.assertIsNone(events.argon_verdict('alice',{'verification_status':'NOT_MEASURED'}))
+  event=events.argon_verdict('alice',{'verification_status':'PASS','right_elbow_contact_deg':167.4,'threshold_deg':165.0})
+  self.assertEqual(event.type,'fix_verified');self.assertIsNone(event.proposal)
+  self.assertEqual((event.data['before_deg'],event.data['after_deg']),(152.0,167.4))
+  self.assertIn('152° to 167°',event.summary);self.assertIn('target 165°',event.summary)
+  self.assertIsNone(events.argon_verdict('alice',{'verification_status':'PASS','right_elbow_contact_deg':168.0}))
  def test_without_preferences_the_event_carries_the_question(self):
   event=events.argon_verdict('bob',{'verification_status':'FAIL'})
   self.assertIsNone(event.proposal);self.assertIn('home area',event.data['question'])

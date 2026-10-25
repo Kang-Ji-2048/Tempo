@@ -369,7 +369,7 @@ async def analyze_badminton_pipeline(
             },
         )
 
-        # An Argon FAIL becomes a court proposal pushed to Saint; Saint asks the player before booking.
+        # An Argon FAIL becomes a court proposal for Saint; a PASS after a FAIL tells Saint the fix is verified.
         try:
             verdict_event = saint_events.argon_verdict(user_name, {
                 **agent_output, "right_elbow_contact_deg": pose_result["raw_angles"].get("right_elbow_contact_deg")})
