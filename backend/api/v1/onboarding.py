@@ -397,7 +397,10 @@ def get_coach_memory(identity: Dict[str, Any] = Depends(coach_converse._identity
         "intensity": memory.get("intensity"),
         "sessions_per_week": len(schedule.get("days_of_week") or []),
         "cadence_label": (f"{len(schedule['days_of_week'])}x/week · {schedule['time_utc']} UTC"
+                          + "".join(f" · {d[:3]} {t}" for d, t in (schedule.get("day_times") or {}).items())
                           if schedule.get("days_of_week") else None),
+        "skill_focus": memory.get("skill_focus"),
+        "focus_note": memory.get("focus_note"),
         "completed_nodes": sum(1 for n in nodes if n["status"] == "completed"),
         "total_nodes": len(nodes),
     }

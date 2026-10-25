@@ -213,6 +213,13 @@ class MockTempoApi @Inject constructor(
         return schedule
     }
 
+    override suspend fun linkWhatsApp(
+        request: com.tempo.app.network.models.WhatsAppLinkRequestDto
+    ): com.tempo.app.network.models.WhatsAppLinkResponseDto {
+        delay(150)
+        return com.tempo.app.network.models.WhatsAppLinkResponseDto(phoneNumber = request.phoneNumber)
+    }
+
     override suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto {
         delay(150)
         return com.tempo.app.network.models.CoachMemoryResponseDto()

@@ -53,3 +53,14 @@ data class CoachMemoryResponseDto(
     val widgets: List<JsonObject> = emptyList(),
     @SerialName("onboarding_complete") val onboardingComplete: Boolean = false
 )
+
+@Serializable
+data class WhatsAppLinkRequestDto(@SerialName("phone_number") val phoneNumber: String)
+
+/** `POST /api/v1/coach/whatsapp/link`: the phone saved on athlete_memory so Thea's WhatsApp knows you. */
+@Serializable
+data class WhatsAppLinkResponseDto(
+    @SerialName("phone_number") val phoneNumber: String,
+    @SerialName("prefill_text") val prefillText: String = "Hi Thea!",
+    @SerialName("wa_link") val waLink: String? = null
+)

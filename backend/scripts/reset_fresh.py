@@ -43,6 +43,8 @@ def main() -> int:
         result = db[name].delete_many({})
         print(f"cleared {name}: {result.deleted_count} docs")
 
+    print(f"users indexes: {db_mongo.ensure_user_indexes(db)}")
+
     strokes = db[db_mongo.STROKES_COLLECTION]
     for ref in db_mongo.PRO_REFERENCE_STROKES:
         strokes.replace_one({"reference_id": ref["reference_id"]}, {**ref, "is_pro": True}, upsert=True)

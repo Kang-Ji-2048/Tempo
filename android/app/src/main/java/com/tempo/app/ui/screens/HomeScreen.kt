@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -68,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,6 +89,7 @@ import com.tempo.app.ui.theme.BackgroundOnyx
 import com.tempo.app.ui.theme.CardBorderSubtle
 import com.tempo.app.ui.theme.SurfaceCharcoal
 import com.tempo.app.ui.theme.SurfaceVariantDark
+import com.tempo.app.ui.theme.ErrorRed
 import com.tempo.app.ui.theme.TextMuted
 import com.tempo.app.ui.theme.TextPrimaryWhite
 import com.tempo.app.ui.theme.TextSecondarySilver
@@ -106,6 +109,18 @@ fun HomeScreen(
     val homeHeader by viewModel.homeHeader.collectAsStateWithLifecycle()
 
     var showDebugSheet by remember { mutableStateOf(false) }
+    var showWhatsAppLink by remember { mutableStateOf(false) }
+
+    if (showWhatsAppLink) {
+        WhatsAppLinkDialog(
+            onDismiss = { showWhatsAppLink = false },
+            onLink = { phone, onError ->
+                viewModel.linkAndOpenWhatsApp(context, phone) { error ->
+                    if (error == null) showWhatsAppLink = false else onError(error)
+                }
+            }
+        )
+    }
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
@@ -262,7 +277,7 @@ fun HomeScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         // WhatsApp Out-of-band Saint Cadence Button
                         IconButton(
-                            onClick = { viewModel.openWhatsAppCadence(context) },
+                            onClick = { showWhatsAppLink = true },
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
@@ -434,6 +449,20 @@ fun HomeScreen(
                         modifier = Modifier.padding(16.dp),
                         onExchange = { viewModel.refreshFromMemory() }
                     )
+                }
+            }
+
+            // Same coach, same memory, over WhatsApp (Saint).
+            item(key = "whatsapp_link") {
+                OutlinedButton(
+                    onClick = { showWhatsAppLink = true },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF25D366))
+                ) {
+                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = null, tint = Color(0xFF25D366))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Link & Message on WhatsApp", color = TextPrimaryWhite, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -716,4 +745,47 @@ private fun TheaMessageBubble(
             }
         }
     }
+}
+
+
+@Composable
+private fun WhatsAppLinkDialog(onDismiss: () -> Unit, onLink: (String, (String) -> Unit) -> Unit) {
+    var phone by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var linking by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceCharcoal,
+        title = { Text("Link WhatsApp", color = TextPrimaryWhite) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Thea will recognise messages from this number and share your plan, schedule and drills.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondarySilver
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it; error = null },
+                    label = { Text("Your WhatsApp number") },
+                    placeholder = { Text("+44 7700 900123") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let { Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    linking = true
+                    onLink(phone) { message -> error = message; linking = false }
+                },
+                enabled = phone.count { it.isDigit() } >= 6 && !linking
+            ) { Text(if (linking) "Linking…" else "Link & open WhatsApp") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

@@ -138,6 +138,8 @@ PUBLIC_PATHS = {
     '/api/v1/auth/register',
     '/api/v1/auth/login',
     '/api/v1/sports',
+    # Authenticates itself (Bearer, shared secret or Twilio signature); Twilio can't send a Bearer token.
+    '/api/v1/webhooks/whatsapp',
 }
 
 

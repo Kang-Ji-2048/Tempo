@@ -251,6 +251,28 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Saves [phoneNumber] on athlete_memory (so inbound WhatsApp messages resolve to this athlete),
+     * then opens a chat with Thea. [onResult] gets null on success or a message to show.
+     */
+    fun linkAndOpenWhatsApp(context: Context, phoneNumber: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val linked = tempoApi.linkWhatsApp(com.tempo.app.network.models.WhatsAppLinkRequestDto(phoneNumber.trim()))
+                onResult(null)
+                openWhatsAppCadence(context, linked.prefillText)
+            } catch (e: retrofit2.HttpException) {
+                onResult(when (e.code()) {
+                    409 -> "That number is already linked to another Tempo account."
+                    422 -> "Use international format, e.g. +44 7700 900123."
+                    else -> "Couldn't link WhatsApp (HTTP ${e.code()})."
+                })
+            } catch (e: Exception) {
+                onResult("Couldn't reach Tempo. Check the connection and try again.")
+            }
+        }
+    }
+
     fun openWhatsAppCadence(context: Context, customBrief: String? = null) {
         val theaNumber = BuildConfig.THEA_NUMBER.ifBlank { "4477985791437" }
         val brief = customBrief ?: "Hey Coach Thea! I'm reviewing my practice session debrief and setting my upcoming training cadence."

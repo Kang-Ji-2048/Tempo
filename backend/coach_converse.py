@@ -178,6 +178,21 @@ def _normalize_days(days: Any) -> List[str]:
     return sorted(out, key=WEEKDAYS.index)
 
 
+def _normalize_day_times(day_times: Any) -> Dict[str, str]:
+    """Accept [{day, time_utc}] (tool schema) or {day: time}; returns {Weekday: "HH:MM"}."""
+    if not day_times:
+        return {}
+    pairs = day_times.items() if isinstance(day_times, dict) else [
+        (d.get("day"), d.get("time_utc") or d.get("time")) for d in day_times if isinstance(d, dict)]
+    out = {}
+    for day, value in pairs:
+        time_value = str(value or "").strip()
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
+            raise ValueError(f"time for {day} must be HH:MM (24h, UTC)")
+        out[_normalize_days([day])[0]] = time_value
+    return out
+
+
 class TheaToolbox:
     """Executes Coach Thea's tools for one athlete, recording actions and widgets."""
 
@@ -268,8 +283,8 @@ class TheaToolbox:
         self.widgets[drill["id"]] = {"widget_type": "DrillCardWidget", **drill}
         return {"drill": drill}
 
-    def update_training_schedule(self, days: Any, time_utc: Optional[str] = None,
-                                 preferred_channel: Optional[str] = None) -> Dict[str, Any]:
+    def update_training_schedule(self, days: Any = None, time_utc: Optional[str] = None,
+                                 preferred_channel: Optional[str] = None, day_times: Any = None) -> Dict[str, Any]:
         current = self.memory.get("reminder_schedule") or {}
         time_value = (time_utc or current.get("time_utc") or DEFAULT_TIME_UTC).strip()
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
@@ -277,7 +292,15 @@ class TheaToolbox:
         channel = (preferred_channel or current.get("preferred_channel") or "whatsapp").strip().lower()
         if channel not in {"whatsapp", "push", "sms"}:
             raise ValueError("preferred_channel must be whatsapp, push or sms")
-        schedule = {"days_of_week": _normalize_days(days), "time_utc": time_value,
+        overrides = _normalize_day_times(day_times)
+        base_days = _normalize_days(days) if days else list(current.get("days_of_week") or [])
+        if not base_days and not overrides:
+            raise ValueError("Give training days, or a day_times change for an existing schedule")
+        all_days = sorted(set(base_days) | set(overrides), key=WEEKDAYS.index)
+        # Per-day times survive for days still trained; a new global time_utc clears them.
+        kept = {} if time_utc else {d: t for d, t in (current.get("day_times") or {}).items() if d in all_days}
+        merged = {d: t for d, t in {**kept, **overrides}.items() if t != time_value}
+        schedule = {"days_of_week": all_days, "time_utc": time_value, "day_times": merged,
                     "preferred_channel": channel, "priming_lead_minutes": current.get("priming_lead_minutes", 30)}
         self._save({"reminder_schedule": schedule})
         self._sync_cadence_schedule(schedule)
@@ -299,6 +322,29 @@ class TheaToolbox:
         )
         android_api._put("user_schedules", self.user_id, record.model_dump())
 
+    def set_skill_focus(self, focus: str, skill_id: Optional[str] = None) -> Dict[str, Any]:
+        """Record what the athlete wants to work on; maps it to a catalog skill of their sport when one fits."""
+        sport = sports_config.get_sport(self.memory.get("sport") or "")
+        if sport is None:
+            raise ValueError("Set the athlete's sport with set_sport_and_goals before choosing a focus")
+        note = str(focus).strip()[:300]
+        if not note:
+            raise ValueError("focus must describe what to work on")
+        skill = next((s for s in sport.skills if s.id == skill_id), None) if skill_id else None
+        if skill_id and skill is None:
+            raise ValueError(f"{skill_id} is not a {sport.id} skill; choose one of {[s.id for s in sport.skills]}")
+        if skill is None:
+            words = set(re.findall(r"[a-z]+", note.lower()))
+            skill = next((s for s in sport.skills
+                          if words & (set(s.id.split("_")) | set(s.name.lower().replace("-", " ").split())) - {"one", "the"}),
+                         None)
+        updates: Dict[str, Any] = {"focus_note": note}
+        if skill is not None:
+            updates["skill_focus"] = skill.id
+        self._save(updates)
+        return {"focus_note": note, "skill_focus": self.memory.get("skill_focus"),
+                "matched_skill": skill.name if skill else None}
+
     def find_nearby_courts(self, lat: float, lng: float) -> Dict[str, Any]:
         lat, lng = float(lat), float(lng)
         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
@@ -315,7 +361,7 @@ class TheaToolbox:
 TOOL_IMPLEMENTATIONS: Dict[str, Callable[..., Dict[str, Any]]] = {
     name: getattr(TheaToolbox, name) for name in (
         "set_sport_and_goals", "set_athlete_level_and_generate_plan", "update_lesson_progress",
-        "assign_custom_drill", "update_training_schedule", "find_nearby_courts",
+        "assign_custom_drill", "update_training_schedule", "find_nearby_courts", "set_skill_focus",
     )
 }
 
@@ -354,11 +400,26 @@ TOOL_DECLARATIONS: List[Dict[str, Any]] = [
      }, "required": ["title", "instruction", "target_reps", "focus_cue"]}},
     {"name": "update_training_schedule",
      "description": "Set the weekly training days and reminder time. Convert 'N times a week' into N concrete, "
-                    "well-spaced weekday names.",
+                    "well-spaced weekday names. To move one day's session (\"move Tuesday to 7pm\"), pass only "
+                    "day_times; the other days keep their time.",
      "parameters_json_schema": {"type": "object", "properties": {
-         "days": {"type": "array", "items": {"type": "string", "enum": WEEKDAYS}},
-         "time_utc": {"type": "string", "description": "HH:MM 24h UTC; omit to keep the current time"},
-     }, "required": ["days"]}},
+         "days": {"type": "array", "items": {"type": "string", "enum": WEEKDAYS},
+                  "description": "Full set of training days; omit to keep the current days"},
+         "time_utc": {"type": "string", "description": "Default HH:MM 24h UTC for every day; omit to keep it"},
+         "day_times": {"type": "array", "description": "Per-day time overrides", "items": {
+             "type": "object", "properties": {
+                 "day": {"type": "string", "enum": WEEKDAYS},
+                 "time_utc": {"type": "string", "description": "HH:MM 24h UTC"},
+             }, "required": ["day", "time_utc"]}},
+     }}},
+    {"name": "set_skill_focus",
+     "description": "Record what the athlete wants to focus on (e.g. 'backhand net clearance'). Pass skill_id when "
+                    "it matches one of their sport's skills so analysis and live cues target it.",
+     "parameters_json_schema": {"type": "object", "properties": {
+         "focus": {"type": "string", "description": "The focus in the athlete's words"},
+         "skill_id": {"type": "string", "enum": sorted({s.id for sp in sports_config.SPORTS_CATALOG.values()
+                                                        for s in sp.skills})},
+     }, "required": ["focus"]}},
     {"name": "find_nearby_courts",
      "description": "Find courts near a location using MongoDB $nearSphere over the facilities collection.",
      "parameters_json_schema": {"type": "object", "properties": {
@@ -399,7 +460,8 @@ def system_instruction(memory: Dict[str, Any], hr: Optional[Dict[str, Any]], cha
         "Rules:\n"
         "- Persist every change the athlete asks for by calling tools; never claim a change you did not make with a tool.\n"
         "- Sport, motivation or intensity mentioned -> set_sport_and_goals. Training frequency or days -> "
-        "update_training_schedule with concrete weekday names. Level stated -> set_athlete_level_and_generate_plan.\n"
+        "update_training_schedule with concrete weekday names (one day moved -> day_times only). Level stated -> "
+        "set_athlete_level_and_generate_plan. A technique to focus on -> set_skill_focus.\n"
         "- Only cite biomechanics from recent_flaws and heart-rate numbers from the stats below; never invent measurements.\n"
         f"- Location unknown for court search: use central London ({DEFAULT_LAT}, {DEFAULT_LNG}).\n"
         f"- {CHANNEL_STYLE[channel]}\n"
@@ -475,6 +537,18 @@ def run_gemini(toolbox: TheaToolbox, message: str, channel: str, hr: Optional[Di
 _NUMBER_WORDS = {"once": 1, "one": 1, "twice": 2, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}
 
 
+def _clock_to_24h(clock: str) -> Optional[str]:
+    m = re.fullmatch(r"([0-9]{1,2})(?::([0-5][0-9]))?\s*(am|pm)?", clock.strip())
+    if not m:
+        return None
+    hour = int(m.group(1))
+    if m.group(3):
+        hour = hour % 12 + (12 if m.group(3) == "pm" else 0)
+    elif hour < 8:
+        hour += 12  # "move it to 7" means the evening for training sessions
+    return f"{hour:02d}:{m.group(2) or '00'}" if hour < 24 else None
+
+
 def plan_fallback_calls(message: str, memory: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
     text = message.lower()
     calls: List[Tuple[str, Dict[str, Any]]] = []
@@ -489,8 +563,16 @@ def plan_fallback_calls(message: str, memory: Dict[str, Any]) -> List[Tuple[str,
     level = next((lvl for lvl in db_mongo.LEVELS if lvl in text), None)
     if level:
         calls.append(("set_athlete_level_and_generate_plan", {"level": level}))
+    focus = re.search(r"\bfocus(?:ing)? on (?:my |the )?(.+?)(?:\s+and\s+(?:move|change|shift|train)\b|[,.!?]|$)", text)
+    if focus:
+        calls.append(("set_skill_focus", {"focus": focus.group(1).strip()}))
+    moves = re.findall(rf"\b(?:move|change|shift|push)\s+(?:my\s+)?({'|'.join(d.lower() for d in WEEKDAYS)})s?"
+                       r"(?:'s)?\s+(?:session|practice|training)?\s*(?:to|at)\s+([0-9]{1,2}(?::[0-5][0-9])?\s*(?:am|pm)?)", text)
+    if moves:
+        day_times = [{"day": day.title(), "time_utc": _clock_to_24h(clock)} for day, clock in moves]
+        calls.append(("update_training_schedule", {"day_times": [d for d in day_times if d["time_utc"]]}))
     freq = re.search(r"\b(\d|once|twice|one|two|three|four|five|six|seven)\s*(?:x|times?)?\s*(?:a|per|each)\s*week", text)
-    named_days = [d for d in WEEKDAYS if re.search(rf"\b{d.lower()}s?\b", text)]
+    named_days = [] if moves else [d for d in WEEKDAYS if re.search(rf"\b{d.lower()}s?\b", text)]
     if freq or named_days:
         n = freq and (int(freq.group(1)) if freq.group(1).isdigit() else _NUMBER_WORDS[freq.group(1)])
         clock = re.search(r"\b(?:at\s*)?([01]?\d|2[0-3])(?::([0-5]\d))?\s*(am|pm)\b|\b([01]\d|2[0-3]):([0-5]\d)\b", text)
@@ -515,9 +597,12 @@ def fallback_reply(toolbox: TheaToolbox) -> str:
     if m.get("curriculum_nodes") and "path" in toolbox.widgets:
         active = next((n for n in m["curriculum_nodes"] if n["status"] == "active"), m["curriculum_nodes"][0])
         parts.append(f"Your {len(m['curriculum_nodes'])}-step plan starts with {active['title']}.")
+    if "set_skill_focus" in toolbox.actions:
+        parts.append(f"Focus noted: {m.get('focus_note')}.")
     if "schedule" in toolbox.widgets:
         s = m["reminder_schedule"]
-        parts.append(f"I'll train you {', '.join(s['days_of_week'])} at {s['time_utc']} UTC.")
+        moved = "".join(f", {d} at {t}" for d, t in (s.get("day_times") or {}).items())
+        parts.append(f"I'll train you {', '.join(s['days_of_week'])} at {s['time_utc']} UTC{moved}.")
     if "courts" in toolbox.widgets and toolbox.widgets["courts"]["courts"]:
         court = toolbox.widgets["courts"]["courts"][0]
         parts.append(f"Closest court: {court['name']} ({court['distance_km']} km).")

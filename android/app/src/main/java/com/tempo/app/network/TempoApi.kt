@@ -68,6 +68,11 @@ interface TempoApi {
     @GET("health")
     suspend fun getHealth(): Map<String, String>
 
+    @POST("api/v1/coach/whatsapp/link")
+    suspend fun linkWhatsApp(
+        @Body request: com.tempo.app.network.models.WhatsAppLinkRequestDto
+    ): com.tempo.app.network.models.WhatsAppLinkResponseDto
+
     @GET("api/v1/coach/memory")
     suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto
 

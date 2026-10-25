@@ -1350,7 +1350,7 @@ NODE_STATUSES = ("locked", "active", "completed")
 MEMORY_FIELDS = (
     "phone_number", "sport", "skill_focus", "level", "motivation_why", "intensity",
     "reminder_schedule", "curriculum_nodes", "recent_flaws", "chat_history", "assigned_drills",
-    "last_completed_node",
+    "last_completed_node", "focus_note",
 )
 
 SEED_LONDON_FACILITIES: List[Dict[str, Any]] = [
@@ -1397,6 +1397,7 @@ def default_athlete_memory(user_id: str) -> Dict[str, Any]:
         "chat_history": [],
         "assigned_drills": [],
         "last_completed_node": None,
+        "focus_note": None,
         "created_at": _utc_now_iso(),
         "updated_at": _utc_now_iso(),
     }
@@ -1419,6 +1420,27 @@ def _validate_memory_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
     if "chat_history" in clean:
         clean["chat_history"] = list(clean["chat_history"])[-CHAT_HISTORY_TURNS:]
     return clean
+
+
+USER_INDEXES = {"user_id_unique": "user_id", "email_unique": "email"}
+LEGACY_USER_INDEXES = ("userId_1", "location_2dsphere_idx")  # old camelCase schema; userId is never written
+
+
+def ensure_user_indexes(db: Any) -> Dict[str, List[str]]:
+    """Drop stale camelCase `users` indexes (a unique `userId` makes every second sign-up collide on
+    null and fall back to process memory) and index the fields accounts actually use."""
+    col = db["users"]
+    existing = col.index_information()
+    dropped = [name for name in LEGACY_USER_INDEXES if name in existing]
+    for name in dropped:
+        col.drop_index(name)
+    created = []
+    for name, field in USER_INDEXES.items():
+        if name not in existing:
+            col.create_index(field, name=name, unique=True,
+                             partialFilterExpression={field: {"$type": "string"}})
+            created.append(name)
+    return {"dropped": dropped, "created": created}
 
 
 def get_athlete_memory(user_id: str) -> Dict[str, Any]:

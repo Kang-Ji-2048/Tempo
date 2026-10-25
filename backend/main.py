@@ -41,6 +41,7 @@ if __package__:
     from .argon_analysis import run_biomechanical_analysis
     from . import sports_config, llm_config, user_auth, coach_converse
     from .api.v1 import onboarding as onboarding_api
+    from .api.v1 import omnichannel as omnichannel_api
     from .db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -68,6 +69,7 @@ else:
     from argon_analysis import run_biomechanical_analysis
     import sports_config, llm_config, user_auth, coach_converse
     from api.v1 import onboarding as onboarding_api
+    from api.v1 import omnichannel as omnichannel_api
     from db_mongo import (
         check_mongo_health,
         create_watch_pairing_session,
@@ -1527,6 +1529,8 @@ app.include_router(create_android_router(analyze_badminton_pipeline, _broadcast_
 
 # Shared-memory onboarding assessment + home feed (replaces app.api.v1.onboarding on the same path).
 app.include_router(onboarding_api.router)
+# WhatsApp (Saint/Twilio/Meta) + Gemini adapters and Saint proactive cadence.
+app.include_router(omnichannel_api.router)
 
 # Unified omnichannel Coach Thea (replaces the legacy app.api.v1.coach router on the same path).
 app.include_router(coach_converse.router)
