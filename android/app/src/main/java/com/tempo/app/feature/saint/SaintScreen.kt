@@ -20,9 +20,9 @@ import com.tempo.app.ui.theme.*
     Column(Modifier.fillMaxSize().background(BackgroundOnyx).verticalScroll(rememberScrollState()).imePadding().padding(24.dp),
         verticalArrangement=Arrangement.spacedBy(16.dp)) {
         TextButton(onClick={navController.popBackStack()}) { Text("← Back",color=TextSecondarySilver) }
-        Text("SAINT · COMMAND & APPROVAL",color=AccentNeonVolt,style=MaterialTheme.typography.labelSmall)
+        Text("PLAN WITH SAINT",color=AccentNeonVolt,style=MaterialTheme.typography.labelSmall)
         Text("Plan your next session",style=MaterialTheme.typography.displayLarge)
-        Text("Mock venue prototype. No real court bookings, payments or messages. Proposals use a deterministic parser; Saint's hosted service is not connected.",color=TextSecondarySilver)
+        Text("Plan your next practice, then review each action before it runs. Court bookings are simulated in this demo.",color=TextSecondarySilver)
         OutlinedButton(onClick=viewModel::connection,enabled=!state.busy,modifier=Modifier.fillMaxWidth()) {
             Text("Connect to Tempo",color=AccentNeonVolt)
         }
@@ -38,7 +38,7 @@ import com.tempo.app.ui.theme.*
             Button(onClick=viewModel::connect,enabled=!state.busy,modifier=Modifier.fillMaxWidth()) { Text("Save & connect") }
         }
         OutlinedButton(onClick=viewModel::editPreferences,enabled=!state.busy,modifier=Modifier.fillMaxWidth()) {
-            Text(if(state.editingPreferences) "Close preferences" else "Home area & preferences",color=AccentNeonVolt)
+            Text(if(state.editingPreferences) "Close preferences" else "Practice preferences",color=AccentNeonVolt)
         }
         if(state.editingPreferences) {
             OutlinedTextField(value=state.preferences.homeArea,onValueChange={viewModel.preferences(state.preferences.copy(homeArea=it.take(120)))},label={Text("Home area")},enabled=!state.busy,modifier=Modifier.fillMaxWidth())

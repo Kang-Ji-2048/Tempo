@@ -5,6 +5,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +19,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,6 +68,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,7 +129,8 @@ fun HomeScreen(
             }
         )
     }
-    var inputText by remember { mutableStateOf("") }
+    var inputText by rememberSaveable { mutableStateOf("") }
+    val canSend = inputText.isNotBlank() && !conversationState.isThinking
     // Diagnostics stay hidden: tap the studio title five times to reveal them in the account sheet.
     var titleTaps by remember { mutableStateOf(0) }
     var diagnosticsUnlocked by remember { mutableStateOf(false) }
@@ -239,6 +247,7 @@ fun HomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .imePadding()
             .background(BackgroundOnyx)
     ) {
         LazyColumn(
@@ -254,7 +263,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -264,7 +273,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "THEA COACHING ECOSYSTEM",
+                                text = "TEMPO",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.2.sp
@@ -274,7 +283,7 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Conversational Studio",
+                            text = "Your next session",
                             modifier = Modifier.clickable {
                                 titleTaps += 1
                                 if (titleTaps >= 5) {
@@ -300,7 +309,7 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.ChatBubbleOutline,
-                                contentDescription = "Saint WhatsApp Cadence",
+                                contentDescription = "Link WhatsApp",
                                 tint = AccentNeonVolt,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -324,15 +333,6 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
-
-            item {
-                OutlinedButton(
-                    onClick = { navController.navigate(Screen.Saint.route) },
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, AccentNeonVolt),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text("Plan with Saint", color = AccentNeonVolt) }
             }
 
             // Sport & Discipline Quick Filter Pill
@@ -395,7 +395,7 @@ fun HomeScreen(
                             }
                         }
                         Text(
-                            text = "Tap to switch",
+                            text = "Change",
                             style = MaterialTheme.typography.labelSmall,
                             color = AccentNeonVolt
                         )
@@ -406,11 +406,11 @@ fun HomeScreen(
             // Quick Training Launch Cards
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Card(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 112.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
                         border = BorderStroke(1.dp, CardBorderSubtle),
@@ -420,15 +420,15 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = AccentNeonVolt, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Record Clip", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text("Record a stroke", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("CameraX 60fps & 33 pose landmarks", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text("Review a short practice clip", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
                         }
                     }
 
                     Card(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 112.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
                         border = BorderStroke(1.dp, CardBorderSubtle),
@@ -438,13 +438,22 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Speed, contentDescription = null, tint = AccentNeonVolt, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Live Earbuds", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text("Live coaching", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Real-time cues with 10s cooldown", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text("Listen while you practise", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
                         }
                     }
                 }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.Saint.route) },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, AccentNeonVolt),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("Plan with Saint", color = AccentNeonVolt) }
             }
 
             // SECTION 1: Top-Level Duolingo Skill Progression Tree (PathProgressWidget)
@@ -479,20 +488,6 @@ fun HomeScreen(
                 ContinueWithTheaButton()
             }
 
-            // Same coach, same memory, over WhatsApp (Saint).
-            item(key = "whatsapp_link") {
-                OutlinedButton(
-                    onClick = { showWhatsAppLink = true },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, Color(0xFF25D366))
-                ) {
-                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = null, tint = Color(0xFF25D366))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Link & Message on WhatsApp", color = TextPrimaryWhite, fontWeight = FontWeight.Bold)
-                }
-            }
-
             // SECTION 2: Coach Thea Dialogue Feed (Surface A)
             item {
                 Row(
@@ -501,7 +496,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "COACH THEA DIALOGUE",
+                        text = "Your coach",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -550,7 +545,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Thea is analyzing kinetic metrics...",
+                            text = "Thea is working through your question…",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextMuted
                         )
@@ -561,28 +556,28 @@ fun HomeScreen(
             // Suggested Conversation Quick Chips
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val chips = listOf(
-                        "Why did my contact point drop?",
-                        "How do I fix elbow flexion?",
-                        "Check my training cadence"
+                        "What should I practise next?",
+                        "Help me review a stroke",
+                        "Plan my next session"
                     )
                     chips.forEach { chipText ->
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = SurfaceCharcoal,
                             border = BorderStroke(1.dp, CardBorderSubtle),
-                            modifier = Modifier.clickable {
+                            modifier = Modifier.heightIn(min = 44.dp).clickable(enabled = !conversationState.isThinking) {
                                 viewModel.sendMessage(chipText)
                             }
                         ) {
                             Text(
                                 text = chipText,
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                style = MaterialTheme.typography.labelMedium,
                                 color = TextSecondarySilver,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                             )
                         }
                     }
@@ -594,7 +589,7 @@ fun HomeScreen(
             if (otherWidgets.isNotEmpty()) {
                 item {
                     Text(
-                        text = "RECOMMENDED ACTION DRILLS & COMPREHENSION",
+                        text = "Your next step",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -622,7 +617,8 @@ fun HomeScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth(),
-            color = BackgroundOnyx.copy(alpha = 0.95f),
+            color = BackgroundOnyx,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             border = BorderStroke(1.dp, CardBorderSubtle)
         ) {
             Row(
@@ -636,9 +632,9 @@ fun HomeScreen(
                     onValueChange = { inputText = it },
                     placeholder = {
                         Text(
-                            text = "Ask Coach Thea about technique, drills...",
+                            text = "Ask Thea…",
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
+                            color = TextSecondarySilver
                         )
                     },
                     modifier = Modifier.weight(1f),
@@ -655,7 +651,7 @@ fun HomeScreen(
                     maxLines = 2,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = {
-                        if (inputText.isNotBlank()) {
+                        if (canSend) {
                             viewModel.sendMessage(inputText)
                             inputText = ""
                         }
@@ -665,21 +661,22 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 IconButton(
+                    enabled = canSend,
                     onClick = {
-                        if (inputText.isNotBlank()) {
+                        if (canSend) {
                             viewModel.sendMessage(inputText)
                             inputText = ""
                         }
                     },
                     modifier = Modifier
-                        .size(46.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
-                        .background(AccentNeonVolt)
+                        .background(if (canSend) AccentNeonVolt else SurfaceVariantDark)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.Send,
                         contentDescription = "Send",
-                        tint = BackgroundOnyx,
+                        tint = if (canSend) BackgroundOnyx else TextSecondarySilver,
                         modifier = Modifier.size(20.dp)
                     )
                 }

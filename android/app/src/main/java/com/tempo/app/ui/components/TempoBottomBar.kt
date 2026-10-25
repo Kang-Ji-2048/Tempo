@@ -27,6 +27,7 @@ import com.tempo.app.ui.theme.AccentNeonVolt
 import com.tempo.app.ui.theme.BackgroundOnyx
 import com.tempo.app.ui.theme.SurfaceCharcoal
 import com.tempo.app.ui.theme.TextMuted
+import com.tempo.app.ui.theme.TextSecondarySilver
 import com.tempo.app.ui.theme.TextPrimaryWhite
 
 data class BottomNavItem(
@@ -62,7 +63,7 @@ fun TempoBottomBar(
     ) {
         NavigationBar(
             containerColor = SurfaceCharcoal,
-            modifier = Modifier.height(72.dp)
+            modifier = Modifier.height(80.dp)
         ) {
             BottomNavItems.forEach { item ->
                 val selected = currentRoute == item.route
@@ -89,11 +90,11 @@ fun TempoBottomBar(
                         Text(text = item.title)
                     },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = BackgroundOnyx,
-                        selectedTextColor = AccentNeonVolt,
-                        indicatorColor = AccentNeonVolt,
-                        unselectedIconColor = TextMuted,
-                        unselectedTextColor = TextMuted
+                        selectedIconColor = AccentNeonVolt,
+                        selectedTextColor = TextPrimaryWhite,
+                        indicatorColor = AccentNeonVolt.copy(alpha = 0.14f),
+                        unselectedIconColor = TextSecondarySilver,
+                        unselectedTextColor = TextSecondarySilver
                     )
                 )
             }

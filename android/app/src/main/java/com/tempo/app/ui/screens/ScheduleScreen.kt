@@ -112,7 +112,7 @@ fun ScheduleScreen(
         // Header
         Column {
             Text(
-                text = "SAINT (THEA) CADENCE",
+                text = "YOUR PRACTICE",
                 style = MaterialTheme.typography.labelLarge,
                 color = AccentNeonVolt
             )
@@ -123,7 +123,7 @@ fun ScheduleScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Set weekly training slots for automatic priming and reminders",
+                text = "Choose practice days and times that fit your week.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondarySilver
             )
@@ -143,7 +143,7 @@ fun ScheduleScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "CURRENT CADENCE",
+                        text = "WEEKLY REMINDERS",
                         style = MaterialTheme.typography.labelLarge,
                         color = AccentNeonVolt
                     )
@@ -403,7 +403,7 @@ fun ScheduleScreen(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "RECENT CHECK-IN DISPATCH",
+                    text = "LATEST REMINDER",
                     style = MaterialTheme.typography.labelLarge,
                     color = AccentNeonVolt
                 )

@@ -55,7 +55,6 @@ val Typography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 18.sp,
-        letterSpacing = 0.5.sp,
-        color = BackgroundOnyx
+        letterSpacing = 0.5.sp
     )
 )

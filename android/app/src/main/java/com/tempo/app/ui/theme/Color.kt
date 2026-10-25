@@ -15,7 +15,7 @@ val CardBorderSubtle = Color(0xFF2C303B)
 // Text & Content
 val TextPrimaryWhite = Color(0xFFF5F6F8)
 val TextSecondarySilver = Color(0xFF9499A5)
-val TextMuted = Color(0xFF636773)
+val TextMuted = Color(0xFF89909D)
 
 // Status / Accents
 val ErrorRed = Color(0xFFFF5252)

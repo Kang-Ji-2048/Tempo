@@ -115,7 +115,7 @@ fun AnalysisScreen(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "BIOMECHANICAL PIPELINE",
+                        text = "PRACTICE REVIEW",
                         style = MaterialTheme.typography.labelSmall.copy(
                             letterSpacing = 1.2.sp,
                             fontWeight = FontWeight.Bold
@@ -123,7 +123,7 @@ fun AnalysisScreen(
                         color = AccentNeonVolt
                     )
                     Text(
-                        text = "Practice Debrief",
+                        text = "Your session review",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold
                         ),
@@ -170,7 +170,7 @@ fun AnalysisScreen(
                             )
                         }
                         Text(
-                            text = "Analysis Encountered an Issue",
+                            text = "This session needs another look",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = TextPrimaryWhite
                         )
@@ -271,7 +271,7 @@ fun AnalysisScreen(
             if (uiState.widgets.isNotEmpty()) {
                 item {
                     Text(
-                        text = "PRESCRIPTION & PROGRESS",
+                        text = "YOUR NEXT STEP",
                         style = MaterialTheme.typography.labelSmall.copy(
                             letterSpacing = 1.2.sp,
                             fontWeight = FontWeight.Bold
@@ -433,7 +433,7 @@ private fun DebriefHeaderCard(
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "PRIMARY TECHNIQUE FLAW",
+                            text = "YOUR MAIN FOCUS",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFFF9800),
