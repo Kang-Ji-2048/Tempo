@@ -56,9 +56,12 @@ data class CurriculumAdaptationUi(
     val nextNodeTitle: String?,
     val overallScore: Int?,
     val passScore: Int,
+    val reason: String? = null,
 ) {
     val lessonCompleted: Boolean get() = action == "lesson_completed"
     val remedialAssigned: Boolean get() = action == "remedial_assigned"
+    /** The clip couldn't grade the lesson (no reliable pose, or no overhead contact for an overhead skill). */
+    val lessonUnchanged: Boolean get() = action == "not_measured" || action == "overhead_not_captured"
 }
 
 @HiltViewModel
@@ -256,6 +259,7 @@ class AnalysisViewModel @Inject constructor(
             nextNodeTitle = text("next_node_title"),
             overallScore = (obj["overall_score"] as? JsonPrimitive)?.intOrNull,
             passScore = (obj["pass_score"] as? JsonPrimitive)?.intOrNull ?: 80,
+            reason = text("reason"),
         )
     }
 

@@ -212,3 +212,25 @@ def test_live_gemini_tool_calling(client, user_id):
     doc = stored_memory(user_id)
     assert doc["sport"] == "badminton" and doc["intensity"] == "competitive"
     assert len(doc["reminder_schedule"]["days_of_week"]) == 4 and doc["curriculum_nodes"]
+
+
+def test_new_athlete_gets_warm_greeting_and_failures_stay_json(client, user_id, monkeypatch):
+    monkeypatch.setattr(llm_config, "GEMINI_API_KEY", "")
+    hello = client.post("/api/v1/coach/converse", json={"message": "hi"}).json()
+    assert hello["reply_text"].startswith("Hi, I'm Thea, your Encode Club coach")
+    assert hello["speak_text"] and hello["dynamic_widgets"] == []
+
+    def boom(_user_id):
+        raise RuntimeError("telemetry store down")
+
+    monkeypatch.setattr(coach_converse, "heart_rate_stats", boom)
+    res = client.post("/api/v1/coach/converse", json={"message": "hi again"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["llm_source"] == "error" and body["reply_text"] and body["speak_text"]
+
+
+def test_system_prompt_carries_encode_thea_persona():
+    prompt = coach_converse.system_instruction({"user_id": "u"}, None, "app")
+    for fact in ("Thea", "Encode Club", "thea@saint.work", "+44 7985 791437", "Finsbury Leisure", "never say it's done"):
+        assert fact in prompt

@@ -259,14 +259,23 @@ async def analyze_badminton_pipeline(
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
         pose_result = await run_in_threadpool(extract_pose_from_video, temp_video_path or "")
         demo_mode = os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true"
-        if pose_result["used_fallback"] and not demo_mode:
-            unavailable = pose_result["status"] in {
-                "pose_model_missing", "mediapipe_tasks_unavailable", "opencv_unavailable", "pose_inference_failed"}
-            raise HTTPException(status_code=503 if unavailable else 422, detail={
-                "message": ("Pose engine unavailable. Check /health and run setup_pose_model.py."
-                            if unavailable else "No reliable single-player overhead pose detected. Upload a full-body right-handed overhead video."),
+        if pose_result["status"] in {"fallback_no_video", "fallback_unreadable_video"} and not demo_mode:
+            raise HTTPException(status_code=422, detail={
+                "message": "Upload a readable MP4, MOV, MKV or WebM clip of your swing.",
                 "pose_status": pose_result["status"],
             })
+        engine_down = pose_result["status"] in {
+            "pose_model_missing", "mediapipe_tasks_unavailable", "opencv_unavailable", "pose_inference_failed"}
+        if pose_result["used_fallback"] and engine_down and not demo_mode:
+            raise HTTPException(status_code=503, detail={
+                "message": "Pose engine unavailable. Check /health and run setup_pose_model.py.",
+                "pose_status": pose_result["status"],
+            })
+        # No reliable body in the clip (or another player dominated it): still coach, from the video alone,
+        # but report no angles rather than the demo placeholders.
+        pose_measured = not pose_result["used_fallback"] or demo_mode
+        if not pose_measured:
+            pose_result = {**pose_result, "raw_angles": {}, "pose_vector": None}
         live_cached = get_latest_watch_telemetry(user_name)
         if (
             watch_raw_payload is None
@@ -298,11 +307,16 @@ async def analyze_badminton_pipeline(
                     require_recent(watch_metrics.get('sampled_at'))
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
-            save_live_watch_telemetry(user_name, watch_metrics)
+            # With no watch file, payload or reading, the HR above is a placeholder: never store or coach on it.
+            watch_metrics["measured"] = demo_mode or not (
+                watch_raw_payload is None and heart_rate_bpm is None and active_calories_kcal is None)
+            if watch_metrics["measured"]:
+                save_live_watch_telemetry(user_name, watch_metrics)
 
         # Step 2: MongoDB Atlas $vectorSearch Pro Matching & 2dsphere Geospatial Partner Discovery (Taha)
         user_pose_vector = pose_result["pose_vector"]
-        pro_match = find_closest_pro_pose(user_pose_vector, sport=sport)
+        pro_match = (find_closest_pro_pose(user_pose_vector, sport=sport) if pose_measured else
+                     {"player_name": None, "validation_status": "not_measured", "all_pro_matches": []})
         partner_match = find_training_partner(
             city="London",
             user_pose_vector=user_pose_vector,
@@ -320,6 +334,8 @@ async def analyze_badminton_pipeline(
             pro_match=pro_match,
             video_path=temp_video_path,
             partner_match=partner_match,
+            pose_meta={k: pose_result.get(k) for k in (
+                "status", "overhead_contact_detected", "contact_selection", "valid_pose_frames", "warnings")},
         )
 
         # Dispatch Saint webhook if configured

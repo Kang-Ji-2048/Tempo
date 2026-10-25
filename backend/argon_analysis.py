@@ -145,6 +145,36 @@ def measured_score(elbow_deg: float, threshold: float, similarity: float) -> int
     return max(score, PASS_SCORE_FLOOR) if elbow_deg >= threshold else min(score, PASS_SCORE_FLOOR - 1)
 
 
+NOT_MEASURED = "NOT_MEASURED"
+
+
+def build_unmeasured_guidance(user_name: str, sport_id: str, skill_id: str,
+                              pose_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """No reliable body in the clip: constructive filming + technique guidance, and no invented numbers."""
+    skill_def = sports_config.get_skill(sport_id, skill_id)
+    skill_name = skill_def.name if skill_def else skill_id.replace("_", " ")
+    crowded = (pose_meta or {}).get("status") == "multiple_players_detected"
+    framing = ("Another player was in view for most of the clip, so I couldn't lock onto you. "
+               if crowded else "I couldn't see your whole body clearly enough to measure your joints. ")
+    tip = ("Film side-on from about 3 metres, phone at hip height, with your head, racket and feet in frame "
+           "for the whole swing, and keep other players out of shot.")
+    return {
+        "overall_score": None,
+        "verification_status": NOT_MEASURED,
+        "primary_flaw": "Swing not measurable from this clip",
+        "biomechanical_diagnosis": framing + tip,
+        "live_drill_prescription": f"Record 5 {skill_name} reps again side-on, full body in frame, then upload.",
+        "concise_audio_cue": "Step back so I can see all of you.",
+        "coach_voice_note_script": framing + tip,
+        "saint_agent_job": {
+            "plain_english_instruction": f"Remind {user_name} to re-film their {skill_name} side-on with full body in frame.",
+            "proactive_training_notification": "Quick re-film needed: side-on, full body, 5 reps.",
+            "requires_human_approval": True,
+            "approval_action_summary": f"Send {user_name} a filming tip for their next {skill_name} clip.",
+        },
+    }
+
+
 def build_deterministic_fallback(
     user_name: str,
     sport_id: str,
@@ -233,8 +263,13 @@ async def run_biomechanical_analysis(
     pro_match: Dict[str, Any],
     video_path: Optional[str] = None,
     partner_match: Optional[Dict[str, Any]] = None,
+    pose_meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Executes Gemini 4 Argon analysis with Files API video upload and structured output.
+
+    `pose_data` empty means no reliable body was measured: Gemini coaches from the video alone and the
+    score is reported as None. `pose_meta.overhead_contact_detected` False means the angles come from the
+    fastest full-body swing frame rather than an overhead contact.
 
     The athlete's `athlete_memory` (sport, skill focus, level, active lesson, recent flaws) is
     loaded here, so callers only pass measured data; it sets the level-calibrated threshold.
@@ -247,9 +282,13 @@ async def run_biomechanical_analysis(
     sport_id, skill_id = resolve_skill(sport_id, skill_id, memory)
     threshold = level_threshold(sport_id, skill_id, memory.get("level"))
     pro_deltas = compute_pro_deltas(pose_data, pro_match)
+    measured = bool(pose_data)
+    meta = pose_meta or {}
+    overhead_seen = bool(meta.get("overhead_contact_detected", measured))
     analysis_context = {"sport_id": sport_id, "skill_id": skill_id, "threshold_deg": threshold,
                         "athlete_level": memory.get("level"), "pro_deltas": pro_deltas,
-                        "active_node_id": active_node.get("id") if active_node else None}
+                        "active_node_id": active_node.get("id") if active_node else None,
+                        "pose_measured": measured, "overhead_contact_detected": overhead_seen}
 
     # Step 1: Precompute authoritative deterministic baseline
     baseline = build_deterministic_fallback(
@@ -261,7 +300,7 @@ async def run_biomechanical_analysis(
         pro_match=pro_match,
         partner_match=partner_match,
         threshold_deg=threshold,
-    )
+    ) if measured else build_unmeasured_guidance(user_name, sport_id, skill_id, meta)
 
     skill_def = sports_config.get_skill(sport_id, skill_id)
     sport_name = sport_id.replace("_", " ").title()
@@ -330,12 +369,25 @@ async def run_biomechanical_analysis(
         "recent_flaws": (memory.get("recent_flaws") or [])[:3],
     }
 
+    if not measured:
+        pose_note = (f"POSE: NOT MEASURED ({meta.get('status')}). There are no joint angles for this clip. Do not "
+                     "state any angle or score. Use the video to explain kindly what blocked measurement and how to "
+                     "film (side-on, ~3 m, full body, no other players), plus one technique cue you can see. "
+                     "Set overall_score to 0 and verification_status to FAIL; both are replaced downstream.\n")
+    elif not overhead_seen:
+        pose_note = ("POSE: no overhead contact was visible. The angles below are from the fastest full-body swing "
+                     "frame. Coach the stroke actually shown, mention that a clear overhead contact wasn't captured if "
+                     "the lesson needs one, and suggest filming the full swing side-on.\n")
+    else:
+        pose_note = "POSE: overhead contact candidate (highest reliable wrist frame).\n"
     measured_data_block = (
+        pose_note +
         f"MEASURED DATA:\n"
         f"Athlete: {user_name} | Sport: {sport_name} | Skill: {skill_name}\n"
         f"3D Joint Angles: {json.dumps(pose_data, indent=2)}\n"
-        f"Apple Watch Biometrics: {json.dumps(watch_metrics, indent=2)}\n"
-        f"Closest Pro Match: {json.dumps(pro_match, indent=2, default=str)}\n"
+        + (f"Apple Watch Biometrics: {json.dumps(watch_metrics, indent=2)}\n" if watch_metrics.get("measured", True)
+           else "Apple Watch Biometrics: none recorded for this session; do not mention heart rate or fatigue.\n")
+        + f"Closest Pro Match: {json.dumps(pro_match, indent=2, default=str)}\n"
         f"Pro Deltas (athlete minus pro, degrees): {json.dumps(pro_deltas, indent=2)}\n"
         f"Athlete Memory: {json.dumps(memory_block, indent=2, default=str)}\n"
         f"Rule Threshold ({memory.get('level') or 'default'} level): {threshold:.0f}° elbow angle at contact is PASS, else FAIL.\n"
@@ -394,9 +446,12 @@ async def run_biomechanical_analysis(
         llm_config.update_ai_status(True, latency_ms=latency_ms)
         # Measured numbers are authoritative: PASS/FAIL comes from the threshold, and the score must agree.
         response_data["verification_status"] = baseline["verification_status"]
-        score = int(response_data["overall_score"])
-        response_data["overall_score"] = (max(score, PASS_SCORE_FLOOR) if baseline["verification_status"] == "PASS"
-                                          else min(score, PASS_SCORE_FLOOR - 1))
+        if not measured:
+            response_data["overall_score"] = None  # nothing was measured, so there is no score to report
+        else:
+            score = int(response_data["overall_score"])
+            response_data["overall_score"] = (max(score, PASS_SCORE_FLOOR) if baseline["verification_status"] == "PASS"
+                                              else min(score, PASS_SCORE_FLOOR - 1))
         return {
             **response_data,
             **analysis_context,

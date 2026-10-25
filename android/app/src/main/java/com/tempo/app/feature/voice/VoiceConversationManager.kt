@@ -83,6 +83,20 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** What to tell the athlete when a Thea turn fails; distinguishes slow, signed-out, server and network errors. */
+fun theaErrorMessage(e: Throwable): String = when (e) {
+    is java.net.SocketTimeoutException -> "Thea is taking longer than usual to answer. Try again in a moment."
+    is retrofit2.HttpException -> when (e.code()) {
+        401 -> "Your session expired. Sign in again to talk to Thea."
+        403 -> "Thea can only open your own account. Sign in again."
+        in 500..599 -> "Thea hit a problem on the server (HTTP ${e.code()}). Try again shortly."
+        else -> "Thea couldn't take that request (HTTP ${e.code()})."
+    }
+    is kotlinx.serialization.SerializationException -> "Thea replied in a format this app version can't read. Update the app."
+    is java.io.IOException -> "Couldn't reach Tempo. Check the connection (adb reverse tcp:8000 tcp:8000) and try again."
+    else -> "Something went wrong talking to Thea (${e.javaClass.simpleName})."
+}
+
 sealed interface VoiceState {
     data object Idle : VoiceState
     data class Listening(val partial: String = "") : VoiceState
@@ -201,7 +215,8 @@ class VoiceConversationManager @Inject constructor(
             try {
                 val response = withContext(Dispatchers.IO) {
                     tempoApi.converseWithCoach(
-                        CoachConverseRequestDto(userId = identity.userId.ifBlank { null }, message = transcript, channel = channel)
+                        // No user_id: the server answers for the signed-in token, so a stale local id can't 403.
+                        CoachConverseRequestDto(message = transcript, channel = channel)
                     )
                 }
                 val spoken = response.speakText?.takeIf { it.isNotBlank() } ?: response.replyText
@@ -215,7 +230,7 @@ class VoiceConversationManager @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Converse failed", e)
-                _state.value = VoiceState.Error("Couldn't reach Thea. Check the connection and try again.")
+                _state.value = VoiceState.Error(theaErrorMessage(e))
             }
         }
     }

@@ -354,9 +354,21 @@ def _remedial_quiz(quiz_id: str, sport: str, elbow: float, threshold: float, lev
 
 
 def _adapt_curriculum(user_id: str, session_id: str, metadata: SessionMetadata, payload: dict[str, Any],
-                      overall_score: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Complete the lesson on a passing score, otherwise attach a remedial drill and quiz to it."""
+                      overall_score: int | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Complete the lesson on a passing score, otherwise attach a remedial drill and quiz to it.
+
+    Unmeasured clips (no reliable body) and swings that missed the overhead contact an overhead skill
+    needs leave the curriculum untouched; the session still returns Thea's guidance.
+    """
+    pose = payload['pose_analysis']
+    if overall_score is None or pose.get('used_fallback') or not pose.get('raw_angles'):
+        return {'overall_score': None, 'pass_score': LESSON_PASS_SCORE, 'action': 'not_measured',
+                'reason': pose.get('status')}, []
     memory = db_mongo.get_athlete_memory(user_id)
+    skill = memory.get('skill_focus') or metadata.stroke_type
+    if skill in OVERHEAD_SKILLS and pose.get('overhead_contact_detected') is False:
+        return {'overall_score': overall_score, 'pass_score': LESSON_PASS_SCORE, 'action': 'overhead_not_captured',
+                'reason': 'No overhead contact was visible, so this clip did not grade the overhead lesson.'}, []
     nodes = [dict(n) for n in memory.get('curriculum_nodes') or []]
     target = next((n for n in nodes if n.get('id') == metadata.node_id and n.get('status') != 'locked'), None) \
         or next((n for n in nodes if n.get('status') == 'active'), None)
@@ -475,16 +487,18 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
             video_used = payload.get('video_used', False)
             latency_ms = payload.get('latency_ms', 0)
             overall_score = payload.get('overall_score')
-            if overall_score is None:
+            measured = not payload['pose_analysis'].get('used_fallback') and bool(payload['pose_analysis'].get('raw_angles'))
+            if overall_score is None and measured:
                 overall_score = 88 if payload.get('verification_status') == 'PASS' else 68
             primary_flaw = payload.get('primary_flaw') or payload.get('biomechanical_diagnosis')
 
             adaptation, adapted_widgets = await run_in_threadpool(
-                _adapt_curriculum, metadata.user_id, session_id, metadata, payload, int(overall_score))
+                _adapt_curriculum, metadata.user_id, session_id, metadata, payload,
+                int(overall_score) if overall_score is not None else None)
             widgets = adapted_widgets or [{
                 'widget_type': 'DrillCardWidget',
                 'id': f'{session_id}-drill',
-                'title': 'Practice focus',
+                'title': 'Practice focus' if measured else 'Re-film tip',
                 'instruction': payload['live_drill_prescription'],
                 'focus_cue': payload.get('concise_audio_cue', payload['verification_status']),
                 'target_reps': 10,
@@ -499,7 +513,7 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                 llm_error=llm_error,
                 video_used=video_used,
                 latency_ms=latency_ms,
-                gemini_feedback=_feedback(payload, int(overall_score), adaptation),
+                gemini_feedback=_feedback(payload, int(overall_score) if overall_score is not None else None, adaptation),
                 kinematic_vector=payload['pose_analysis']['pose_vector'],
                 pipeline_session_id=payload['session_id'],
                 apple_watch_biometrics=payload.get('apple_watch_biometrics'),

@@ -1188,7 +1188,9 @@ def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, A
 
     method = "in_memory_facet_fallback"
     rows = [s for s in _MEMORY_STROKES
-            if s.get("user_name") == user_name and s.get("is_pro_reference") is False]
+            if s.get("user_name") == user_name and s.get("is_pro_reference") is False
+            # Clips with no reliable pose carry no angles; they can't join the elbow-vs-HR comparison.
+            and "right_elbow_contact_deg" in ((s.get("pose_analysis") or {}).get("raw_angles") or {})]
     buckets = []
     for low, high, label in [(0, 145, "Zone 1-2 (<145 BPM)"),
                              (145, 165, "Zone 3-4 (145-<165 BPM)"),

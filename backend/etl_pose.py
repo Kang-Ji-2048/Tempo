@@ -131,7 +131,7 @@ def _extract_landmark_3d(landmarks: Any, idx: int) -> Tuple[float, float, float]
 def _pose_unavailable(status: str, frames_scanned: int = 0) -> Dict[str, Any]:
     # Retain the demo contract; the HTTP layer refuses these values outside demo mode.
     raw = dict(FALLBACK_RAW_ANGLES)
-    return {"status": status, "used_fallback": True, "frames_scanned": frames_scanned,
+    return {"status": status, "used_fallback": True, "overhead_contact_detected": False, "frames_scanned": frames_scanned,
             "peak_contact_frame": None, "raw_angles": raw, **raw,
             "pose_vector": build_pose_vector(raw), "coordinate_space": "synthetic_demo",
             "contact_selection": "unavailable", "valid_pose_frames": 0}
@@ -149,7 +149,8 @@ def _angles_from_landmarks(world: Any, image: Any) -> Dict[str, float]:
             "contact_height_norm": round(1.0 - float(image[16].y), 4)}
 
 
-def _reliable_overhead_pose(image: Any, world: Any) -> bool:
+def _reliable_full_body_pose(image: Any, world: Any) -> bool:
+    """Every required landmark is confident, finite and inside the frame (any stroke, not only overhead)."""
     if len(image) < 33 or len(world) < 33:
         return False
     for idx in REQUIRED_LANDMARKS:
@@ -161,14 +162,24 @@ def _reliable_overhead_pose(image: Any, world: Any) -> bool:
             return False
         if not (0 <= landmark.x <= 1 and 0 <= landmark.y <= 1):
             return False
+    return True
+
+
+def _is_overhead(image: Any) -> bool:
     return image[16].y < min(image[0].y, image[12].y) - 0.02
+
+
+def _reliable_overhead_pose(image: Any, world: Any) -> bool:
+    return _reliable_full_body_pose(image, world) and _is_overhead(image)
 
 
 def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
     """Use Tasks VIDEO mode and world landmarks to measure a single right-handed player.
 
-    Select the highest reliable overhead wrist frame as a contact *candidate*.
-    This does not detect a racket, ball/shuttle, or actual impact.
+    Contact *candidate*, best first: the highest reliable overhead wrist frame; otherwise (forehand,
+    drive, serve or an incomplete swing) the fastest right-wrist frame with the full body visible.
+    Frames with a second person are skipped unless they dominate the clip. This does not detect a
+    racket, ball/shuttle, or actual impact.
     """
     if not video_path or not os.path.isfile(video_path):
         return _pose_unavailable("fallback_no_video")
@@ -188,6 +199,10 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
     ambiguous_frames = 0
     best = None
     best_y = float("inf")
+    swing_best = None  # fastest right wrist among full-body frames (non-overhead strokes)
+    swing_speed = -1.0
+    full_body_frames = 0
+    prev_wrist: Optional[Tuple[float, float, int]] = None
     fps = float(cap.get(cv2.CAP_PROP_FPS))
     fps_estimated = not math.isfinite(fps) or fps <= 0
     if fps_estimated:
@@ -220,15 +235,31 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
                 result = landmarker.detect_for_video(image, timestamp)
                 if len(result.pose_landmarks) > 1:
                     ambiguous_frames += 1
+                    prev_wrist = None
                     continue
                 if len(result.pose_landmarks) != 1 or len(result.pose_world_landmarks) != 1:
+                    prev_wrist = None
                     continue
                 normalized, world = result.pose_landmarks[0], result.pose_world_landmarks[0]
-                if not _reliable_overhead_pose(normalized, world):
+                if not _reliable_full_body_pose(normalized, world):
+                    prev_wrist = None
                     continue
                 try:
                     raw = _angles_from_landmarks(world, normalized)
                 except ValueError:
+                    continue
+                full_body_frames += 1
+                wrist = (float(normalized[16].x), float(normalized[16].y), timestamp)
+                if prev_wrist is not None and timestamp > prev_wrist[2]:
+                    speed = math.dist(wrist[:2], prev_wrist[:2]) / ((timestamp - prev_wrist[2]) / 1000.0)
+                    if speed > swing_speed:
+                        swing_speed = speed
+                        swing_best = (raw, frame_idx, timestamp,
+                                      min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
+                prev_wrist = wrist
+                if swing_best is None:
+                    swing_best = (raw, frame_idx, timestamp, min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
+                if not _is_overhead(normalized):
                     continue
                 valid_frames += 1
                 if normalized[16].y < best_y:
@@ -241,21 +272,30 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
     finally:
         cap.release()
 
-    # Reject the clip if another player was detected at any point; no identity tracking is implemented.
+    warnings = ["Monocular 3D pose estimate; actual racket impact is not detected.",
+                "Right-handed single-player analysis."]
+    # No identity tracking: frames with a second person were skipped. Refuse only if they dominate.
     if ambiguous_frames:
-        return _pose_unavailable("multiple_players_detected", frames_scanned)
-    if best is None:
-        return _pose_unavailable("fallback_no_reliable_overhead_pose", frames_scanned)
-    raw, peak_idx, timestamp, visibility = best
-    return {"status": "detected", "used_fallback": False,
-            "frames_scanned": frames_scanned, "valid_pose_frames": valid_frames,
+        if ambiguous_frames >= full_body_frames:
+            return _pose_unavailable("multiple_players_detected", frames_scanned)
+        warnings.append(f"Skipped {ambiguous_frames} frames with more than one person in view.")
+    if best is not None:
+        raw, peak_idx, timestamp, visibility = best
+        status, selection, overhead = "detected", "highest_visible_overhead_wrist_proxy", True
+    elif swing_best is not None:
+        raw, peak_idx, timestamp, visibility = swing_best
+        status, selection, overhead = "detected_no_overhead_contact", "fastest_right_wrist_full_body_frame", False
+        warnings.append("No overhead contact was visible; angles are from the fastest full-body swing frame.")
+    else:
+        return _pose_unavailable("fallback_no_reliable_pose", frames_scanned)
+    return {"status": status, "used_fallback": False, "overhead_contact_detected": overhead,
+            "frames_scanned": frames_scanned, "valid_pose_frames": valid_frames if overhead else full_body_frames,
             "peak_contact_frame": peak_idx, "peak_contact_timestamp_ms": timestamp,
             "raw_angles": raw, **raw, "pose_vector": build_pose_vector(raw),
             "engine": "mediapipe_tasks_pose_landmarker", "coordinate_space": "estimated_world_meters",
-            "contact_selection": "highest_visible_overhead_wrist_proxy",
+            "contact_selection": selection,
             "min_landmark_visibility": round(visibility, 4), "fps_estimated": fps_estimated,
-            "warnings": ["Monocular 3D pose estimate; actual racket impact is not detected.",
-                         "Right-handed single-player overhead analysis only."]}
+            "warnings": warnings}
 
 
 def _derive_fatigue_state(

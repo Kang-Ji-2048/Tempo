@@ -23,7 +23,8 @@ def analysis_payload():
         'biomechanical_diagnosis': 'Measured elbow extension is 170 degrees.',
         'live_drill_prescription': 'Comfortable overhead reach practice.',
         'verification_status': 'PASS', 'demo_mode': False,
-        'pose_analysis': {'pose_vector': [.94, .8, .9, .8, .7, .9], 'used_fallback': False},
+        'pose_analysis': {'pose_vector': [.94, .8, .9, .8, .7, .9], 'used_fallback': False,
+                          'raw_angles': {'right_elbow_contact_deg': 170.0}},
     }
 
 

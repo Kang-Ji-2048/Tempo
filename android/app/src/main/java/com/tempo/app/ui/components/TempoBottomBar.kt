@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ data class BottomNavItem(
 
 val BottomNavItems = listOf(
     BottomNavItem(title = "Home", route = Screen.Home.route, icon = Icons.Default.Home),
+    BottomNavItem(title = "Live", route = Screen.Live.route, icon = Icons.Default.Sensors),
     BottomNavItem(title = "Capture", route = Screen.Capture.route, icon = Icons.Default.Videocam),
     BottomNavItem(title = "Schedule", route = Screen.Schedule.route, icon = Icons.Default.CalendarMonth)
 )

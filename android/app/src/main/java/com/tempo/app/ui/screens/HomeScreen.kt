@@ -418,7 +418,7 @@ fun HomeScreen(
                                 Text("Live Earbuds", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Real-time cues with 15s cooldown", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text("Real-time cues with 10s cooldown", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                     }
                 }

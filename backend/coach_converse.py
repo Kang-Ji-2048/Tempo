@@ -445,6 +445,15 @@ def heart_rate_stats(user_id: str) -> Optional[Dict[str, Any]]:
             "source": window.get("aggregation_method")}
 
 
+THEA_PERSONA = (
+    "You are Thea, an AI colleague from Encode Club (thea@saint.work, WhatsApp +44 7985 791437) who runs the "
+    "tennis and badminton side of this athlete's life. You handle biomechanics analysis of their clips, finding "
+    "London courts (Finsbury Leisure, Islington and nearby), play-or-postpone calls when weather is in question, "
+    "hitting-partner message templates, gear reorders and their structured weekly lesson plan. You are warm, "
+    "direct and practical: a colleague who has their back, not a chatbot. Every channel (app, live, WhatsApp, "
+    "Gemini) shares one memory, so you remember what they told you elsewhere."
+)
+
 CHANNEL_STYLE = {
     "app": "Reply in 2-4 short sentences; the app renders plan, schedule and drill widgets for you.",
     "live": "You are speaking in a live voice session mid-practice: 1-2 short spoken sentences, no lists or markdown.",
@@ -456,13 +465,17 @@ CHANNEL_STYLE = {
 def system_instruction(memory: Dict[str, Any], hr: Optional[Dict[str, Any]], channel: str) -> str:
     profile = {k: v for k, v in memory.items() if k not in ("chat_history", "_id")}
     return (
-        "You are Coach Thea, Tempo's racket-sports coach. One shared memory backs every channel the athlete uses.\n"
+        f"{THEA_PERSONA}\n"
         "Rules:\n"
         "- Persist every change the athlete asks for by calling tools; never claim a change you did not make with a tool.\n"
         "- Sport, motivation or intensity mentioned -> set_sport_and_goals. Training frequency or days -> "
         "update_training_schedule with concrete weekday names (one day moved -> day_times only). Level stated -> "
         "set_athlete_level_and_generate_plan. A technique to focus on -> set_skill_focus.\n"
         "- Only cite biomechanics from recent_flaws and heart-rate numbers from the stats below; never invent measurements.\n"
+        "- No sport or plan in memory yet: greet them warmly as Thea and ask their sport, level and goal. Otherwise "
+        "point them to their active lesson (the curriculum node with status active) as the next step.\n"
+        "- You can't book courts, check weather or place orders yourself: offer to draft the booking request, "
+        "partner message or reorder for Saint to send with their approval, and never say it's done.\n"
         f"- Location unknown for court search: use central London ({DEFAULT_LAT}, {DEFAULT_LNG}).\n"
         f"- {CHANNEL_STYLE[channel]}\n"
         f"Today (UTC): {datetime.now(timezone.utc).strftime('%A %Y-%m-%d')}\n"
@@ -606,7 +619,13 @@ def fallback_reply(toolbox: TheaToolbox) -> str:
     if "courts" in toolbox.widgets and toolbox.widgets["courts"]["courts"]:
         court = toolbox.widgets["courts"]["courts"][0]
         parts.append(f"Closest court: {court['name']} ({court['distance_km']} km).")
-    return " ".join(parts) or "Tell me your sport, how often you want to train and your level, and I'll build your plan."
+    if parts:
+        return " ".join(parts)
+    active = next((n for n in m.get("curriculum_nodes") or [] if n.get("status") == "active"), None)
+    if active:
+        return f"Hi, it's Thea. Your next lesson is {active['title']}. Want to record a few reps so I can check them?"
+    return ("Hi, I'm Thea, your Encode Club coach for tennis and badminton. Tell me your sport, your level and "
+            "how often you'd like to train, and I'll build your plan.")
 
 
 # ---------------------------------------------------------------------------
@@ -631,7 +650,20 @@ def resolve_athlete(req: ConverseRequest, identity: Dict[str, Any]) -> str:
 @router.post("/converse", response_model=ConverseResponse)
 def converse(req: ConverseRequest, identity: Dict[str, Any] = Depends(_identity)) -> ConverseResponse:
     started = time.monotonic()
-    user_id = resolve_athlete(req, identity)
+    user_id = resolve_athlete(req, identity)  # 403 for another player's athlete stays an error
+    try:
+        return _converse_turn(req, user_id, started)
+    except Exception:
+        logger.exception("Coach Thea turn failed for %s", user_id)
+        reply = "Sorry, something went wrong on my side. Give me a moment and ask me again."
+        return ConverseResponse(
+            reply_text=reply, speak_text=reply, tool_actions_taken=[], athlete_memory={}, active_widgets=[],
+            llm_source="error", llm_model="none", latency_ms=int((time.monotonic() - started) * 1000),
+            audio_cue_text=reply, dynamic_widgets=[],
+        )
+
+
+def _converse_turn(req: ConverseRequest, user_id: str, started: float) -> ConverseResponse:
     toolbox = TheaToolbox(user_id)
     if req.phone_number and toolbox.memory.get("phone_number") != req.phone_number:
         toolbox._save({"phone_number": req.phone_number})

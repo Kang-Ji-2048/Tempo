@@ -189,8 +189,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val activeSessionId = sessionDao.getLatestSession()?.sessionId
+                // No user_id: the server answers for the signed-in token.
                 val request = CoachConverseRequestDto(
-                    userId = identity.userId.ifBlank { "user_1" },
                     message = trimmed,
                     sessionId = activeSessionId
                 )
@@ -215,9 +215,11 @@ class HomeViewModel @Inject constructor(
                 // Thea's tools mutate athlete_memory, so re-render home from it.
                 refreshFromMemory(newWidgets.orEmpty())
             } catch (e: Exception) {
+                android.util.Log.w("HomeViewModel", "Converse failed", e)
+                // Say what failed; never show a made-up coaching reply as if Thea sent it.
                 val fallbackMsg = TheaMessage(
                     sender = TheaSender.THEA,
-                    text = "I'm analyzing your technique. Keep your reach tall and maintain forearm pronation through contact."
+                    text = com.tempo.app.feature.voice.theaErrorMessage(e)
                 )
                 _conversationState.update { current ->
                     current.copy(

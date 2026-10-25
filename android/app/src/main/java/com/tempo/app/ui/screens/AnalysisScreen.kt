@@ -210,7 +210,7 @@ fun AnalysisScreen(
             item {
                 DebriefHeaderCard(debrief = uiState.debrief!!)
             }
-            adaptation?.takeIf { it.lessonCompleted || it.remedialAssigned }?.let { change ->
+            adaptation?.takeIf { it.lessonCompleted || it.remedialAssigned || it.lessonUnchanged }?.let { change ->
                 item { AdaptationBanner(change) }
             }
             proComparison?.takeIf { it.angles.isNotEmpty() }?.let { comparison ->
@@ -474,7 +474,11 @@ private fun AdaptationBanner(adaptation: CurriculumAdaptationUi) {
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = if (passed) "LESSON COMPLETE" else "LESSON ADAPTED",
+                text = when {
+                    passed -> "LESSON COMPLETE"
+                    adaptation.lessonUnchanged -> "LESSON UNCHANGED"
+                    else -> "LESSON ADAPTED"
+                },
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
                 color = AccentNeonVolt
             )
@@ -482,6 +486,11 @@ private fun AdaptationBanner(adaptation: CurriculumAdaptationUi) {
                 text = if (passed) {
                     "${adaptation.nodeTitle ?: "This lesson"} passed with ${adaptation.overallScore ?: "-"}/100." +
                         (adaptation.nextNodeTitle?.let { " Unlocked: $it." } ?: " You've finished the path!")
+                } else if (adaptation.action == "not_measured") {
+                    "Thea couldn't measure your swing in this clip, so your lesson stays where it was. " +
+                        "Her filming tips are below; record again side-on with your full body in frame."
+                } else if (adaptation.lessonUnchanged) {
+                    adaptation.reason ?: "This clip didn't grade your lesson."
                 } else {
                     "Score ${adaptation.overallScore ?: "-"}/100. You need ${adaptation.passScore}+ to pass " +
                         "${adaptation.nodeTitle ?: "this lesson"}. A targeted drill and quiz were added below and to Home."

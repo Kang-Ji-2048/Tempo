@@ -157,11 +157,45 @@ class PoseTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         agent.assert_not_called()
 
-    def test_rejected_pose_is_422_and_stops_pipeline(self):
-        with patch.object(main, 'extract_pose_from_video', return_value=pose._pose_unavailable('multiple_players_detected')), patch.object(main, 'run_argon_and_saint_agent') as agent:
+    def test_non_overhead_swing_uses_fastest_full_body_frame(self):
+        """A forehand/drive never raises the wrist overhead: measure the fastest full-body frame instead of failing."""
+        frames = []
+        for wrist_x in (.50, .52, .70, .72):  # biggest jump lands on the third frame
+            image, world = landmarks()
+            image[16].y, image[16].x = .55, wrist_x  # wrist below the head: not overhead
+            frames.append(result(image, world))
+        measured, _, _ = self.extract(frames, timestamps=[0, 33, 66, 100])
+        self.assertFalse(measured['used_fallback'])
+        self.assertEqual(measured['status'], 'detected_no_overhead_contact')
+        self.assertFalse(measured['overhead_contact_detected'])
+        self.assertEqual(measured['contact_selection'], 'fastest_right_wrist_full_body_frame')
+        self.assertEqual(measured['peak_contact_frame'], 2)
+        self.assertIn('right_elbow_contact_deg', measured['raw_angles'])
+
+    def test_background_player_frames_are_skipped_not_fatal(self):
+        two = NS(pose_landmarks=[landmarks()[0], landmarks()[0]], pose_world_landmarks=[landmarks()[1], landmarks()[1]])
+        measured, _, _ = self.extract([two, result(), result()])
+        self.assertFalse(measured['used_fallback'])
+        self.assertTrue(any('more than one person' in w for w in measured['warnings']))
+
+    def test_unmeasurable_pose_still_coaches_without_numbers(self):
+        """No reliable body (here: another player dominates) completes with filming guidance, not a 422."""
+        with patch.object(db_mongo, 'get_db', return_value=None), \
+                patch.object(main, 'extract_pose_from_video', return_value=pose._pose_unavailable('multiple_players_detected')), \
+                patch.object(main, 'find_closest_pro_pose') as vector_search:
+            response = TestClient(main.app, headers=auth_headers()).post('/pipeline/analyze-stroke', data={'user_name': 'pose-test'})
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIsNone(body['overall_score'])
+        self.assertEqual(body['verification_status'], 'NOT_MEASURED')
+        self.assertEqual(body['pose_analysis']['raw_angles'], {})
+        self.assertIn('Another player', body['biomechanical_diagnosis'])
+        vector_search.assert_not_called()  # no fake angles reach $vectorSearch
+
+    def test_missing_video_is_still_422(self):
+        with patch.object(main, 'extract_pose_from_video', return_value=pose._pose_unavailable('fallback_no_video')):
             response = TestClient(main.app, headers=auth_headers()).post('/pipeline/analyze-stroke')
         self.assertEqual(response.status_code, 422)
-        agent.assert_not_called()
 
     def test_measured_metadata_survives_pipeline(self):
         measured, _, _ = self.extract([result()])
