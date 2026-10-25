@@ -23,6 +23,8 @@ Saint uses the existing backend address and encrypted Tempo player credential. I
 
 All routes use the same Tempo bearer authentication and player ownership checks. Admins retain the existing explicit cross-player access policy.
 
+The Saint assistant gets its own `saint` credential (`python backend/manage_access.py issue --user <player> --role saint --token-file <private path>`). It acts for that one player and only reaches `/command` and `/api/v1/saint/*`; any other route returns 403. When it posts a decision, the action log records `approved_via: saint_relay`, meaning Saint relayed the player's chat reply and Tempo did not see the approval itself. App approvals record `approved_via: player`. A one-time approval link for the player is the planned step before any real payment.
+
 `backend/saint_commands.py::Action` is the source of truth for type, params, summary, requires_approval, idempotency key, owner and expiry. `backend/contracts/saint_action.schema.json` is generated from it. Kotlin wire DTOs preserve the params object; Android never executes or reinterprets venue instructions.
 
 Proposals are HMAC signed, expire after 15 minutes and require approval. The executor rejects modified/expired payloads and admits each key once through Mongo's unique `_id` (or an atomic process lock in the mock fallback). The adapter interface exposes `search()` and `book()`. Only MockVenueAdapter is installed. No real bookings, messages or payments can occur.

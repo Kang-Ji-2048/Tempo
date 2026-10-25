@@ -121,5 +121,20 @@ class SaintTests(unittest.TestCase):
   with patch.object(saint,'claim',side_effect=saint.HTTPException(503,'storage unavailable')),patch.object(saint.ADAPTER,'book') as book:
    with self.assertRaises(saint.HTTPException):saint.execute(body)
    book.assert_not_called()
+ def test_saint_credential_relays_approval_for_its_player_only(self):
+  proposal=self.proposal();relay=TestClient(self.client.app,headers=auth_headers('alice','saint'))
+  self.assertEqual(relay.post('/command',json={'user':'bob','text':'book Saturday'}).status_code,403)
+  response=relay.post('/api/v1/saint/actions/decision',json={'proposal':proposal,'approved':True})
+  self.assertEqual(response.status_code,200,response.text);self.assertEqual(response.json()['approved_via'],'saint_relay')
+  self.assertEqual(self.client.post('/api/v1/saint/actions/decision',json={'proposal':self.proposal(),'approved':True}).json()['approved_via'],'player')
+ def test_saint_credential_cannot_leave_saint_routes(self):
+  from auth import install_auth
+  app=FastAPI();install_auth(app);app.include_router(saint.router)
+  @app.get('/api/v1/sessions')
+  def sessions():return []
+  relay=TestClient(app,headers=auth_headers('alice','saint'))
+  self.assertEqual(relay.get('/api/v1/sessions').status_code,403)
+  self.assertEqual(relay.get('/api/v1/saint/preferences/alice').status_code,200)
+  self.assertEqual(TestClient(app,headers=auth_headers('alice','player')).get('/api/v1/sessions').status_code,200)
 
 if __name__=='__main__':unittest.main()

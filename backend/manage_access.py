@@ -11,7 +11,7 @@ import secrets
 parser = argparse.ArgumentParser()
 parser.add_argument('action', choices=['issue', 'revoke'])
 parser.add_argument('--user', required=True)
-parser.add_argument('--role', choices=['player', 'admin'], default='player')
+parser.add_argument('--role', choices=['player', 'admin', 'saint'], default='player')
 parser.add_argument('--days', type=int, default=30)
 parser.add_argument('--token-file', type=Path, required=True)
 parser.add_argument('--store', type=Path, default=Path(__file__).with_name('.tempo-auth.json'))
