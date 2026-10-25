@@ -150,11 +150,15 @@ PUBLIC_PATHS = {
 }
 
 
+# One-time approval links: the signed link itself is the credential (see saint_events.approval_url).
+PUBLIC_PREFIXES = ('/approve/',)
+
+
 def install_auth(app):
     @app.middleware('http')
     async def protect(request: Request, call_next):
         path = request.url.path
-        if path not in PUBLIC_PATHS:
+        if path not in PUBLIC_PATHS and not path.startswith(PUBLIC_PREFIXES):
             try:
                 request.state.identity = authenticate(request.headers, request.cookies)
                 if request.state.identity['role'] == 'saint' and not saint_may_call(path):

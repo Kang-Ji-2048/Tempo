@@ -43,6 +43,8 @@ Tempo pushes events Saint did not ask for (`backend/saint_events.py::Event` is t
 
 All Tempo-to-Saint traffic now uses this one schema. Events POST to `SAINT_WEBHOOK_URL` with `X-Tempo-Signature: sha256=<HMAC of the raw body with TEMPO_WEBHOOK_SECRET>`. Without a URL they are staged, and Saint pulls them with `GET /api/v1/saint/events/pending/{user}`, which returns each undelivered event once (oldest first) and marks it `pulled`. Every event is logged in `saint_event_log` with its delivery status.
 
+When `SMTP_HOST` and `TEMPO_EMAIL_TO` are set, every pushed event is also emailed to the player. An event with a proposal carries a one-time link, `{TEMPO_PUBLIC_URL}/approve/{idempotency_key}/{HMAC token}`. Opening it only shows the proposal with Approve and Decline buttons, so an email client prefetching the link changes nothing. The button posts the decision to the executor with `approved_via: "email_link"`, which admits each key once like any other decision. This is how a Saint that won't hold a Tempo credential fits in: it reads the email in the player's inbox and asks them, and the player's tap is the approval.
+
 `GET /api/v1/saint/tools` returns the OpenAPI document limited to the routes a `saint` credential may call, for Saint to load as tools.
 
 Demo recording steps: [docs/SAINT_RUNTHROUGH.md](../docs/SAINT_RUNTHROUGH.md).

@@ -34,9 +34,9 @@ Presenter cue: The canonical database is sports_coach_db. Shared player memory a
 
 ## 6. Use of Saint · 1:45–2:10
 
-Argon finds the flaw; Saint books the fix. When a stroke fails the elbow check, or a court opens up, Tempo gives Saint an event with a signed, ready proposal. Saint asks you in chat, and only after your yes does Tempo's backend book it, once, and log that Saint relayed the approval. When a later clip passes, Saint tells you the fix is verified, with the before and after angles. Venues remain mocked, so no real booking or payment is made.
+Argon finds the flaw; Saint books the fix. When a stroke fails the elbow check, or a court opens up, Tempo emails you a ready proposal with a one-time approval link. Saint spots it in your inbox and asks you on WhatsApp. Only your tap on the link books it, once, and Saint puts it in your calendar. When a later clip passes, Saint tells you the fix is verified, with the before and after angles. Venues remain mocked, so no real booking or payment is made.
 
-Presenter cue: Saint picks up events by polling Tempo's pending-events route with its own credential; if it hasn't, show the event log instead. A Saint-scoped credential reaches only Saint routes. The backend records Saint-relayed approvals. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
+Presenter cue: Saint holds no Tempo credential; the email and the one-time link are the hand-off. Opening the link changes nothing until Approve is tapped, and a second tap shows Already decided. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
 
 ## 7. Demo · 2:10–2:40
 

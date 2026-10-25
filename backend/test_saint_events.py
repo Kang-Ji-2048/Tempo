@@ -111,5 +111,32 @@ class SaintEventTests(unittest.TestCase):
  def test_saint_cannot_pull_another_players_events(self):
   relay=TestClient(self.client.app,headers=auth_headers('alice','saint'))
   self.assertEqual(relay.get('/api/v1/saint/events/pending/bob').status_code,403)
+ def test_event_with_a_proposal_is_emailed_with_a_one_time_link(self):
+  env={'SMTP_HOST':'smtp.example','TEMPO_EMAIL_TO':'kang@example.com','TEMPO_PUBLIC_URL':'https://tempo.example'}
+  with patch.dict(os.environ,env),patch.object(events.smtplib,'SMTP') as smtp:
+   result=events.push(events.court_slot_opened('alice'))
+  self.assertEqual(result['email'],'sent')
+  body=smtp.return_value.__enter__.return_value.send_message.call_args.args[0].get_content()
+  link=next(line for line in body.splitlines() if line.startswith('https://tempo.example/approve/'))
+  path=link.removeprefix('https://tempo.example')
+  anonymous=TestClient(self.client.app)
+  with patch.object(saint.ADAPTER,'book') as book:
+   page=anonymous.get(path)
+   book.assert_not_called()
+  self.assertEqual(page.status_code,200);self.assertIn('Approve',page.text)
+  done=anonymous.post(path,data={'decision':'yes'})
+  self.assertIn('Booked (mock)',done.text)
+  key=result['event']['proposal']['action']['idempotency_key']
+  self.assertEqual(saint._MEMORY['saint_action_log:'+key]['approved_via'],'email_link')
+  # A second tap, or a tap the other way, never books twice.
+  self.assertIn('Already decided',anonymous.get(path).text)
+  self.assertIn('different decision',anonymous.post(path,data={'decision':'no'}).text)
+ def test_tampered_link_is_refused(self):
+  proposal=events.court_slot_opened('alice').proposal;key=proposal.action.idempotency_key
+  good=events.approval_url(proposal).split('/approve/')[1]
+  self.assertEqual(TestClient(self.client.app).get('/approve/'+good).status_code,200)
+  self.assertEqual(TestClient(self.client.app).get(f'/approve/{key}/'+'0'*64).status_code,404)
+ def test_email_is_skipped_without_smtp(self):
+  self.assertEqual(events.push(events.court_slot_opened('alice'))['email'],'not_configured')
 
 if __name__=='__main__':unittest.main()
