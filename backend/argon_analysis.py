@@ -145,6 +145,73 @@ def measured_score(elbow_deg: float, threshold: float, similarity: float) -> int
     return max(score, PASS_SCORE_FLOOR) if elbow_deg >= threshold else min(score, PASS_SCORE_FLOOR - 1)
 
 
+AUDIT_RESPONSE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "grounded": {"type": "BOOLEAN"},
+        "unsupported_claims": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "corrected_diagnosis": {"type": "STRING"},
+    },
+    "required": ["grounded", "unsupported_claims", "corrected_diagnosis"],
+}
+
+AUDIT_INSTRUCTION = (
+    "You are Tempo's auditor, a second Argon agent. You never coach. Compare the coach's diagnosis with the "
+    "measured data. List every claim about the athlete's body, numbers or performance that the measured data does "
+    "not support, including invented angles, heart rates or comparisons. If there are none, grounded is true and "
+    "corrected_diagnosis repeats the diagnosis. Otherwise rewrite the diagnosis keeping only supported claims."
+)
+
+
+def _numbers(value: Any) -> List[float]:
+    if isinstance(value, bool):
+        return []
+    if isinstance(value, (int, float)):
+        return [float(value)]
+    if isinstance(value, dict):
+        return [n for v in value.values() for n in _numbers(v)]
+    if isinstance(value, (list, tuple)):
+        return [n for v in value for n in _numbers(v)]
+    return []
+
+
+def ungrounded_angles(text: str, *measured: Any) -> List[str]:
+    """Degree figures in `text` that match no measured value (to within a degree). Deterministic, offline."""
+    import re
+    known = _numbers(list(measured))
+    found = re.findall(r"(\d+(?:\.\d+)?)\s*(?:°|degrees?\b)", text or "")
+    return [n for n in found if not any(abs(float(n) - k) <= 1.0 or abs(float(n) + k) <= 1.0 for k in known)]
+
+
+async def audit_diagnosis(client: Any, measured_data_block: str, coach_output: Dict[str, Any],
+                          *measured: Any) -> tuple[str, Dict[str, Any]]:
+    """Second Argon call that checks the coach's diagnosis against measured data. Returns (diagnosis, audit)."""
+    diagnosis = coach_output["biomechanical_diagnosis"]
+    audit: Dict[str, Any] = {"auditor": llm_config.GEMINI_MODEL}
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content, model=llm_config.GEMINI_MODEL,
+            contents=[measured_data_block, "COACH DIAGNOSIS TO AUDIT:\n" + diagnosis],
+            config=types.GenerateContentConfig(
+                system_instruction=AUDIT_INSTRUCTION, thinking_config=types.ThinkingConfig(thinking_level="low"),
+                response_mime_type="application/json", response_schema=AUDIT_RESPONSE_SCHEMA))
+        verdict = json.loads(response.text or "{}")
+        claims = [str(c) for c in verdict.get("unsupported_claims") or []]
+        audit["unsupported_claims"] = claims
+        if not verdict.get("grounded", True) and (verdict.get("corrected_diagnosis") or "").strip():
+            diagnosis = verdict["corrected_diagnosis"].strip()
+            audit["status"] = "corrected"
+        else:
+            audit["status"] = "passed"
+    except Exception as exc:
+        audit.update(status="error", error=f"{type(exc).__name__}: {exc}")
+    # Whatever the auditor said, an angle the pose engine never measured never reaches the athlete.
+    audit["ungrounded_angles"] = ungrounded_angles(diagnosis, *measured)
+    if audit["ungrounded_angles"]:
+        audit["status"] = "replaced_with_measured_baseline"
+    return diagnosis, audit
+
+
 NOT_MEASURED = "NOT_MEASURED"
 
 
@@ -461,6 +528,12 @@ async def run_biomechanical_analysis(
             score = int(response_data["overall_score"])
             response_data["overall_score"] = (max(score, PASS_SCORE_FLOOR) if baseline["verification_status"] == "PASS"
                                               else min(score, PASS_SCORE_FLOOR - 1))
+            # Two-agent check: a second Argon call audits the coach against the measured numbers.
+            diagnosis, audit = await audit_diagnosis(client, measured_data_block, response_data, pose_data,
+                                                     pro_match, pro_deltas, watch_metrics, threshold)
+            response_data["biomechanical_diagnosis"] = (baseline["biomechanical_diagnosis"]
+                                                        if audit["ungrounded_angles"] else diagnosis)
+            response_data["argon_audit"] = audit
         return {
             **response_data,
             **analysis_context,

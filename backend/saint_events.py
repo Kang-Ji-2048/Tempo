@@ -29,7 +29,7 @@ else:
 
 class Event(saint.StrictModel):
     """The canonical event schema. Add event types here; Saint decides whether to act or ask."""
-    type: Literal['court_slot_opened', 'argon_verdict', 'coaching_job', 'coaching_message']
+    type: Literal['court_slot_opened', 'argon_verdict', 'fix_verified', 'coaching_job', 'coaching_message']
     event_id: str = Field(pattern=r'^[a-f0-9]{32}$')
     user: str
     summary: str = Field(min_length=1, max_length=600)
@@ -90,16 +90,39 @@ def court_slot_opened(user: str) -> Event:
 
 
 def argon_verdict(user: str, verdict: dict) -> Event | None:
-    """An Argon FAIL becomes a proposal for a practice court, with the drill in the summary. PASS pushes nothing."""
-    if verdict.get('verification_status') != 'FAIL':
+    """Turn an Argon verdict into a Saint event, closing the loop across sessions.
+
+    FAIL: a proposal for a practice court, with the drill in the summary.
+    PASS right after a FAIL: `fix_verified`, with the before and after angles. Any other PASS pushes nothing.
+    NOT_MEASURED is ignored and does not reset the loop.
+    """
+    status = verdict.get('verification_status')
+    if status not in ('PASS', 'FAIL'):
         return None
+    elbow = verdict.get('right_elbow_contact_deg')
+    previous = saint.get_record('saint_last_verdict', user)
+    saint.put_record('saint_last_verdict', user, {'status': status, 'right_elbow_contact_deg': elbow,
+                                                  'at': saint.now().isoformat()})
+    if status == 'PASS':
+        if not previous or previous.get('status') != 'FAIL':
+            return None
+        before, target = previous.get('right_elbow_contact_deg'), verdict.get('threshold_deg')
+        change = (f"elbow at contact {before:.0f}° to {elbow:.0f}°" if isinstance(before, (int, float))
+                  and isinstance(elbow, (int, float)) else 'elbow at contact now passes')
+        return Event(type='fix_verified', event_id=uuid4().hex, user=user,
+                     summary=(f"Fix verified by Argon: {change}"
+                              + (f" (target {target:.0f}°)." if isinstance(target, (int, float)) else ".")
+                              + " Tell the player, and ask whether to move on to the next skill."),
+                     data={'before_deg': before, 'after_deg': elbow, 'threshold_deg': target,
+                           'failed_at': previous.get('at')},
+                     occurred_at=saint.now())
     prefs = _prefs(user)
     drill = str(verdict.get('live_drill_prescription') or 'the assigned drill')[:300]
     return _event('argon_verdict', user,
                   f"Argon check failed. Drill: {drill} Propose a practice court and ask the player before booking.",
                   f"book an indoor {prefs.sport} court tomorrow at {prefs.preferred_time} for 60 minutes",
-                  {'verification_status': 'FAIL', 'drill': drill,
-                   'right_elbow_contact_deg': verdict.get('right_elbow_contact_deg')})
+                  {'verification_status': 'FAIL', 'drill': drill, 'right_elbow_contact_deg': elbow,
+                   'threshold_deg': verdict.get('threshold_deg')})
 
 
 def coaching_job(user: str, job: dict, stage: str, metadata: dict | None = None) -> Event:

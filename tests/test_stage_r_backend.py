@@ -19,6 +19,7 @@ from google.genai import errors
 backend_dir = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
+import argon_analysis
 import auth
 import llm_config
 import sports_config
@@ -143,7 +144,66 @@ async def test_gemini_analysis_invalid_json_retries_once():
         )
 
         assert result["llm_source"] == "gemini"
-        assert mock_client.models.generate_content.call_count == 2
+        # Two coach attempts, then the auditor's call (which finds no response left and records an error).
+        coach_calls = [c for c in mock_client.models.generate_content.call_args_list
+                       if c.kwargs["config"].system_instruction != argon_analysis.AUDIT_INSTRUCTION]
+        assert len(coach_calls) == 2
+        assert result["argon_audit"]["status"] == "error"
+
+
+def _coach_reply(diagnosis):
+    reply = MagicMock()
+    reply.text = json.dumps({
+        "overall_score": 60, "verification_status": "FAIL", "primary_flaw": "Bent elbow",
+        "biomechanical_diagnosis": diagnosis, "live_drill_prescription": "Drill.",
+        "concise_audio_cue": "Cue.", "coach_voice_note_script": "Voice.",
+        "saint_agent_job": {"plain_english_instruction": "I", "proactive_training_notification": "N",
+                            "requires_human_approval": True, "approval_action_summary": "S"}})
+    return reply
+
+
+def _audit_reply(grounded, claims, corrected):
+    reply = MagicMock()
+    reply.text = json.dumps({"grounded": grounded, "unsupported_claims": claims, "corrected_diagnosis": corrected})
+    return reply
+
+
+async def _analyse(*replies):
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = list(replies)
+    with patch.object(llm_config, "get_client", return_value=mock_client), \
+         patch.object(llm_config, "GEMINI_API_KEY", "mock_key"):
+        return await run_biomechanical_analysis(
+            user_name="test_athlete", sport_id="badminton", skill_id="overhead_clear",
+            pose_data={"right_elbow_contact_deg": 152.0}, watch_metrics={"heart_rate_bpm": 140.0},
+            pro_match={"player_name": "Viktor Axelsen"})
+
+
+@pytest.mark.asyncio
+async def test_argon_auditor_passes_a_grounded_diagnosis():
+    result = await _analyse(_coach_reply("Elbow at 152° is short of full extension."),
+                            _audit_reply(True, [], "Elbow at 152° is short of full extension."))
+    assert result["argon_audit"]["status"] == "passed"
+    assert result["biomechanical_diagnosis"] == "Elbow at 152° is short of full extension."
+
+
+@pytest.mark.asyncio
+async def test_argon_auditor_corrects_unsupported_claims():
+    result = await _analyse(_coach_reply("Elbow at 152°, and fatigue clearly caused the drop."),
+                            _audit_reply(False, ["fatigue caused the drop"], "Elbow at 152° at contact."))
+    assert result["argon_audit"]["status"] == "corrected"
+    assert result["argon_audit"]["unsupported_claims"] == ["fatigue caused the drop"]
+    assert result["biomechanical_diagnosis"] == "Elbow at 152° at contact."
+
+
+@pytest.mark.asyncio
+async def test_invented_angle_never_reaches_the_athlete():
+    # The auditor misses it, but the deterministic check catches an angle the pose engine never measured.
+    result = await _analyse(_coach_reply("Elbow at 152° and knee bent to 131°."),
+                            _audit_reply(True, [], "Elbow at 152° and knee bent to 131°."))
+    assert result["argon_audit"]["status"] == "replaced_with_measured_baseline"
+    assert result["argon_audit"]["ungrounded_angles"] == ["131"]
+    assert "131" not in result["biomechanical_diagnosis"]
 
 
 @pytest.mark.asyncio
