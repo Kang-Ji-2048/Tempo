@@ -1,5 +1,5 @@
 """
-tests/test_thea_and_sdui_actions.py - Tests for Coach Thea dialogue and SDUI action feedback loop
+tests/test_thea_and_sdui_actions.py - Tests for the SDUI action feedback loop (Coach Thea is tested via backend coach_converse)
 """
 
 import pytest
@@ -13,29 +13,6 @@ from app.models.sdui import (
     ChoiceWidget,
     CapturePromptWidget,
 )
-
-
-@pytest.mark.asyncio
-async def test_coach_converse_endpoint(async_client: AsyncClient):
-    """Verifies Coach Thea conversational response with Gemini 4 Argon & SDUI widgets."""
-    payload = {
-        "user_id": "usr_test_athlete",
-        "message": "Why did my contact point drop in the third set?",
-        "session_id": "test_session_123",
-    }
-    response = await async_client.post("/api/v1/coach/converse", json=payload)
-    assert response.status_code == 200, response.text
-    data = response.json()
-
-    assert "reply_text" in data
-    assert len(data["reply_text"]) > 10
-    assert "dynamic_widgets" in data
-    assert isinstance(data["dynamic_widgets"], list)
-    assert len(data["dynamic_widgets"]) >= 1
-
-    # Check that widgets have valid widget_type discriminator
-    for w in data["dynamic_widgets"]:
-        assert "widget_type" in w
 
 
 @pytest.mark.asyncio

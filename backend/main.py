@@ -1583,7 +1583,7 @@ app.include_router(onboarding_api.router)
 # WhatsApp (Saint/Twilio/Meta) + Gemini adapters and Saint proactive cadence.
 app.include_router(omnichannel_api.router)
 
-# Unified omnichannel Coach Thea (replaces the legacy app.api.v1.coach router on the same path).
+# Unified omnichannel Coach Thea.
 app.include_router(coach_converse.router)
 
 try:
