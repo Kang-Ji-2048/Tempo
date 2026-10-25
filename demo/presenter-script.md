@@ -34,9 +34,9 @@ Presenter cue: The canonical database is sports_coach_db. Shared player memory a
 
 ## 6. Use of Saint · 1:45–2:10
 
-Saint takes the next action through an approval gate. Ask for an indoor court on Saturday morning, review the exact details, then approve or decline. The backend validates the signed proposal and logs execution once. The venue adapter is mocked today, so no real booking or payment is made.
+Argon finds the flaw; Saint books the fix. When a stroke fails the elbow check, or a court opens up, Tempo sends Saint a signed event with a ready proposal. Saint asks you in chat, and only after your yes does Tempo's backend book it, once, and log that Saint relayed the approval. Venues are mocked today, so no real booking or payment is made.
 
-Presenter cue: The only dedicated Saint slide. The command prototype is a deterministic planner with a mock adapter, not a verified connection to saint.agent. Do not claim live availability, a booking confirmation or a payment.
+Presenter cue: The only dedicated Saint slide. Events reach Saint only when SAINT_WEBHOOK_URL is set; say so if the demo uses the staged log instead. The venue adapter is mocked. Do not claim live availability, a booking confirmation or a payment.
 
 ## 7. Demo · 2:10–2:40
 
