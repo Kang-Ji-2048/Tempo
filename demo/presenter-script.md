@@ -46,11 +46,11 @@ Presenter cue: Allow roughly 15 seconds to show the prepared Android walkthrough
 
 VIDEO: The blank 16:9 area is reserved for a prepared recording. No video is embedded yet.
 
-## 8. Impact and next steps · 2:40–3:00
+## 8. Next steps · 2:40–3:00
 
-Our prototype connects video feedback to a drill and a plan for the next session. The pilot starts with Gupen and will measure whether players find the feedback useful, their satisfaction, whether they complete drills and whether they return. Real venue integration follows that pilot.
+First, we’ll test the whole flow, from recording a clip to reviewing the next practice action. Then we’ll try it with Gupen and see whether the advice helps, whether drills get done and whether players come back. After the pilot, we’ll connect a real court provider.
 
-Presenter cue: The left-hand column describes prototype capabilities, not measured customer impact. The earlier 20-phrase parser test and 25-frame video crop remain technical checks, not player outcomes. The crop used synthetic local biometrics and has no ground-truth angle validation. Feedback usefulness, player satisfaction, drill completion and return sessions are proposed pilot measures, not observed results. Timeline stages are planned, not dated commitments.
+Presenter cue: These are planned steps. The complete flow still needs testing, pilot results have not been collected, and court bookings currently use a mock venue adapter.
 
 ## 9. Questions and team · Q&A background
 

@@ -10,4 +10,4 @@ The impact slide presents prototype capabilities and a planned player pilot. Tec
 
 Static Vercel settings: repository Kang-Ji-2048/Tempo, root directory demo, framework Other, no build command, output directory `.`. Updating these files does not create or update a Vercel deployment. Fonts request Manrope from Google Fonts, with system fallbacks.
 
-Motion: short fades and subtle entry movement on the solution, Argon, MongoDB and Saint slides. These automatic reveals add no clicks. Slide 2 retains its three manual question reveals. Reduced-motion preferences disable animation. Title, Demo, Impact and Q&A content stay still.
+Motion: Slide 3 reveals its five architecture cards one at a time with each click, Next or forward arrow; Previous or the back arrow reverses the reveals. Slide 4 uses slower 1.6-second fades with wider staggered delays. MongoDB and Saint retain short automatic reveals. Slide 2 retains its three manual question reveals. Reduced-motion preferences disable animation. Title, Demo, Impact and Q&A content stay still.
