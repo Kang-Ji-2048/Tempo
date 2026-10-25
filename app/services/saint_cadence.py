@@ -272,13 +272,14 @@ class SaintCadenceService:
         payload: SaintNotificationPayload,
         webhook_url: Optional[str] = None,
         extra: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Dispatches Saint notification payload to external Saint/Thea webhook if configured,
         or stages it locally.
         """
-        settings = get_settings()
-        target_webhook = webhook_url or settings.SAINT_WEBHOOK_URL
+        # None -> fall back to settings; an explicit "" means "not configured" (caller read the env itself).
+        target_webhook = get_settings().SAINT_WEBHOOK_URL if webhook_url is None else webhook_url
 
         thea_formatted_text = cls.format_thea_dispatch(payload)
 
@@ -303,6 +304,7 @@ class SaintCadenceService:
                     # e.g. {"to": "+44...", "channel": "whatsapp"} so Saint knows where to deliver.
                     **(extra or {}),
                 },
+                headers=headers or {},
                 timeout=5.0,
             )
             is_success = resp.status_code in (200, 201, 202)

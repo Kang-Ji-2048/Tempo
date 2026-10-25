@@ -181,7 +181,9 @@ def dispatch_saint_webhook(
         "metadata": extra_metadata or {},
     }
     try:
-        resp = requests.post(webhook_url, json=payload, timeout=6.0)
+        secret = os.environ.get("TEMPO_WEBHOOK_SECRET", "").strip()
+        resp = requests.post(webhook_url, json=payload, timeout=6.0,
+                             headers={"X-Tempo-Webhook-Secret": secret} if secret else {})
         return {
             "webhook_configured": True,
             "dispatched": resp.ok,

@@ -10,6 +10,8 @@ so a WhatsApp message and a Gemini chat edit the same `athlete_memory` document 
 - `POST /api/v1/cadence/trigger`: Saint proactive cadence from athlete_memory, logged and dispatched.
 - `POST /api/v1/webhooks/gemini` (+ `GET .../tools`): plain, OpenAI chat-completions, or Gemini
   functionCall shaped requests.
+- `POST /api/v1/webhooks/saint-delivery-receipt`: loopback `SAINT_WEBHOOK_URL` for local runs; records
+  each dispatched Saint payload in `saint_deliveries` (a receipt, not a WhatsApp send).
 """
 from __future__ import annotations
 
@@ -178,6 +180,55 @@ def link_whatsapp(req: WhatsAppLinkRequest, identity: Dict[str, Any] = Depends(c
 
 
 # ---------------------------------------------------------------------------
+# Saint delivery receipt (loopback SAINT_WEBHOOK_URL)
+# ---------------------------------------------------------------------------
+
+SAINT_DELIVERIES_COLLECTION = "saint_deliveries"
+SAINT_RECEIPT_PATH = "/api/v1/webhooks/saint-delivery-receipt"
+
+
+def saint_webhook_headers() -> Dict[str, str]:
+    """Headers every Saint dispatch sends, so the receipt endpoint can authenticate it."""
+    secret = os.environ.get("TEMPO_WEBHOOK_SECRET", "").strip()
+    return {"X-Tempo-Webhook-Secret": secret} if secret else {}
+
+
+@router.post("/webhooks/saint-delivery-receipt")
+async def saint_delivery_receipt(request: Request) -> Dict[str, Any]:
+    """Record a Saint dispatch. Public to the auth middleware; requires the shared webhook secret."""
+    secret = os.environ.get("TEMPO_WEBHOOK_SECRET", "").strip()
+    if not secret or not hmac.compare_digest(secret, request.headers.get("x-tempo-webhook-secret", "")):
+        raise HTTPException(401, "Saint receipts need X-Tempo-Webhook-Secret")
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(422, "Expected a JSON Saint payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(422, "Expected a JSON object")
+    receipt = {
+        "receipt_id": uuid.uuid4().hex,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "event_type": payload.get("event_type"),
+        "user_id": payload.get("user_id") or (payload.get("metadata") or {}).get("user_name"),
+        "to": payload.get("to"),
+        "channel": payload.get("channel"),
+        "message": payload.get("message") or (payload.get("saint_agent_job") or {}).get("proactive_training_notification"),
+        "payload": payload,
+    }
+    db = db_mongo.get_db()
+    stored = False
+    if db is not None:
+        try:
+            await run_in_threadpool(db[SAINT_DELIVERIES_COLLECTION].insert_one, dict(receipt))
+            stored = True
+        except Exception:
+            logger.warning("Saint receipt not persisted", exc_info=True)
+    logger.info("Saint delivery receipt %s: %s for %s -> %s", receipt["receipt_id"], receipt["event_type"],
+                receipt["user_id"], receipt["to"])
+    return {"received": True, "receipt_id": receipt["receipt_id"], "stored": stored}
+
+
+# ---------------------------------------------------------------------------
 # Saint proactive cadence
 # ---------------------------------------------------------------------------
 
@@ -219,7 +270,9 @@ def run_cadence(user_id: str, now: Optional[datetime], dispatch: bool) -> Dict[s
     message = SaintCadenceService.format_thea_dispatch(payload)
     channel = (memory.get("reminder_schedule") or {}).get("preferred_channel", "whatsapp")
     result = SaintCadenceService.dispatch_notification(
-        payload, extra={"to": memory.get("phone_number"), "channel": channel}) if dispatch else {
+        payload, webhook_url=os.environ.get("SAINT_WEBHOOK_URL", "").strip(),
+        extra={"to": memory.get("phone_number"), "channel": channel},
+        headers=saint_webhook_headers()) if dispatch else {
         "dispatched": False, "status": "PREVIEW", "thea_message": message}
     db_mongo.queue_saint_notification({
         "user_id": user_id, "type": f"cadence_{payload.metadata.get('kind')}", "event_type": payload.event_type.value,

@@ -1598,6 +1598,50 @@ def ensure_drills_search_index(db: Any) -> Dict[str, Any]:
     return {"index": DRILLS_SEARCH_INDEX_NAME, "action": "created"}
 
 
+# Search indexes from an earlier schema that no code queries; they fill the M0 3-index quota.
+LEGACY_SEARCH_INDEXES = (("users", "partner_text_index"), ("pro_references", "pose_vector_index"))
+
+
+def _search_index(db: Any, collection: str, name: str) -> Optional[Dict[str, Any]]:
+    try:
+        return next(iter(db[collection].list_search_indexes(name)), None)
+    except PyMongoError:
+        return None
+
+
+def drop_legacy_search_indexes(db: Any, wait_s: float = 90.0) -> List[str]:
+    """Drop the unused legacy search indexes (absent ones are ignored) and wait until Atlas frees them."""
+    import time as _time
+
+    dropped = []
+    for collection, name in LEGACY_SEARCH_INDEXES:
+        if _search_index(db, collection, name) is None:
+            continue
+        try:
+            db[collection].drop_search_index(name)
+            dropped.append(f"{collection}.{name}")
+        except PyMongoError as exc:
+            _memory_log.warning("could not drop search index %s.%s: %s", collection, name, exc)
+    deadline = _time.time() + wait_s
+    while dropped and _time.time() < deadline and any(
+            _search_index(db, c, n) is not None for c, n in LEGACY_SEARCH_INDEXES):
+        _time.sleep(2)
+    return dropped
+
+
+def wait_for_search_index(db: Any, collection: str, name: str, wait_s: float = 180.0) -> str:
+    """Poll until an Atlas search index is queryable; returns its final status."""
+    import time as _time
+
+    deadline = _time.time() + wait_s
+    while True:
+        idx = _search_index(db, collection, name)
+        status = (idx or {}).get("status", "MISSING")
+        if (idx and idx.get("queryable")) or status == "FAILED" or _time.time() >= deadline:
+            return "READY" if idx and idx.get("queryable") else status
+        _time.sleep(3)
+
+
 def search_drills(query: str, sport: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
     """Atlas `$search` over drills_catalog, falling back to regex, then to the in-process catalog."""
     sport_id = (sport or "").strip().lower() or None

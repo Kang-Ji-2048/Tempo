@@ -219,3 +219,20 @@ def test_cadence_trigger_reads_memory_and_logs(athlete):
 
     assert client.post("/api/v1/cadence/trigger", headers=headers, json={"all": True}).status_code == 403
     assert client.post("/api/v1/cadence/trigger", headers=headers, json={"user_id": "someone_else"}).status_code == 403
+
+
+def test_saint_delivery_receipt_requires_secret_and_records():
+    client = TestClient(app)
+    payload = {"event_type": "PRE_SESSION_PRIMING", "user_id": f"receipt{uuid.uuid4().hex[:8]}",
+               "to": "+447700900123", "channel": "whatsapp", "message": "Session in 15 min"}
+    assert client.post("/api/v1/webhooks/saint-delivery-receipt", json=payload).status_code == 401
+    assert client.post("/api/v1/webhooks/saint-delivery-receipt", json=payload,
+                       headers={"X-Tempo-Webhook-Secret": "wrong"}).status_code == 401
+    ok = client.post("/api/v1/webhooks/saint-delivery-receipt", json=payload,
+                     headers={"X-Tempo-Webhook-Secret": SECRET})
+    assert ok.status_code == 200 and ok.json()["received"] is True
+    db = db_mongo.get_db()
+    if db is not None:
+        stored = db["saint_deliveries"].find_one({"receipt_id": ok.json()["receipt_id"]})
+        assert (stored["to"], stored["message"]) == ("+447700900123", "Session in 15 min")
+        db["saint_deliveries"].delete_many({"user_id": payload["user_id"]})

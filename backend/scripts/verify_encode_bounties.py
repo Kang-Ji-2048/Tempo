@@ -295,7 +295,16 @@ class Verifier:
         detail = f"15 min before {session:%a %H:%M} UTC: \"{text[:160]}\" | dispatch {dispatch['status']}"
         if not dispatch["dispatched"]:
             return "WARN", detail + " (set SAINT_WEBHOOK_URL so Saint delivers it to WhatsApp)"
-        return "PASS", detail
+        receipt = self.db["saint_deliveries"].find_one({"user_id": self.user_id, "event_type": "PRE_SESSION_PRIMING"})
+        assert receipt, "dispatched, but no delivery receipt recorded"
+        assert receipt.get("to") and receipt["to"] == self.phone_for_receipts(), f"receipt addressed to {receipt.get('to')}"
+        url = os.environ.get("SAINT_WEBHOOK_URL", "")
+        where = ("loopback receipt endpoint; point SAINT_WEBHOOK_URL at the Saint agent for real WhatsApp sends"
+                 if "127.0.0.1" in url or "localhost" in url else url)
+        return "PASS", detail + f" -> receipt {receipt['receipt_id'][:8]} to {receipt['to']} ({where})"
+
+    def phone_for_receipts(self) -> Optional[str]:
+        return self.memory().get("phone_number")
 
     def saint_whatsapp(self) -> tuple:
         self.post("/api/v1/coach/whatsapp/link", json={"phone_number": self.phone})
@@ -314,6 +323,7 @@ class Verifier:
             return
         for col, key in ((db_mongo.ATHLETE_MEMORY_COLLECTION, "user_id"), (db_mongo.SAINT_QUEUE_COLLECTION, "user_id"),
                          ("users", "user_id"), ("android_sessions", "user_id"), ("user_schedules", "_id"),
+                         ("saint_deliveries", "user_id"),
                          (db_mongo.WATCH_TS_COLLECTION, "metadata.user_name")):
             try:
                 self.db[col].delete_many({key: self.user_id})
@@ -367,8 +377,8 @@ def main() -> int:
         v.check(m, "5a. Atlas Search ($search drills)", v.mongo_atlas_search)
         v.check(m, "5b. Change Streams (db.athlete_memory.watch())", v.mongo_change_stream)
         v.check(s, "Proactive cadence scheduling", v.saint_cadence)
-        v.check(s, "Pre-session mental priming", v.saint_priming)
         v.check(s, "WhatsApp omnichannel routing", v.saint_whatsapp)
+        v.check(s, "Pre-session mental priming", v.saint_priming)
     finally:
         if not args.keep_user:
             v.cleanup()
