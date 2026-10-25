@@ -314,7 +314,7 @@ class LiveViewModel @Inject constructor(
                             summary, text("unlocked_next_node")))
                 }
                 cuePlayer.stop()
-                voice.announce(summary)
+                voice.announce(summary, channel = "live")
             }
             "cue" -> {
                 val cue = text("cue") ?: return
