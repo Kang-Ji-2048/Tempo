@@ -11,6 +11,7 @@ import copy
 from datetime import datetime, timezone
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -121,6 +122,157 @@ def _apply_widget_action(user_id: str, widgets: list[dict[str, Any]], req: Widge
             if w.get('widget_type') == 'ChoiceWidget' and w.get('id') == req.widget_id:
                 w['selected_option_ids'] = payload.get('option_ids', [])
     return widgets
+
+
+# --- Live camera drill mode: on-device 33-landmark pose -> server-side form cues ---------------
+
+OVERHEAD_SKILLS = {'overhead_clear', 'jump_smash'}
+LIVE_MAX_FPS = 30
+LIVE_METRICS_INTERVAL_MS = 500
+LIVE_FRAMING_CUE_INTERVAL_MS = 10_000
+KNEE_LOAD_TARGET_DEG = 160.0   # knees should bend below this while loading
+RECOVERY_TARGET_MS = 1500      # back to base within this after the shot
+SWING_SPEED_START = 1.6        # normalized frame-widths/s; groundstroke rep detection
+SWING_SPEED_END = 0.5
+# MediaPipe Pose indices (right-handed athlete, matching etl_pose).
+R_SHOULDER, R_ELBOW, R_WRIST, R_HIP, R_KNEE, R_ANKLE, L_HIP = 12, 14, 16, 24, 26, 28, 23
+
+
+class LivePoseFrame(BaseModel):
+    type: Literal['pose']
+    timestamp_ms: int = Field(ge=0)
+    # 33 x [x, y, z, visibility] in normalized image coordinates.
+    landmarks: list[list[float]] = Field(min_length=33, max_length=33)
+    aspect: float = Field(default=0.75, gt=0.1, lt=10)  # image width / height
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+def _angle_deg(a: list[float], b: list[float], c: list[float], aspect: float) -> float:
+    """Interior angle at b in the image plane, correcting x for the frame's aspect ratio."""
+    v1 = ((a[0] - b[0]) * aspect, a[1] - b[1])
+    v2 = ((c[0] - b[0]) * aspect, c[1] - b[1])
+    n1, n2 = math.hypot(*v1), math.hypot(*v2)
+    if n1 == 0 or n2 == 0:
+        return 180.0
+    cos = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)))
+    return math.degrees(math.acos(cos))
+
+
+class LiveFormCoach:
+    """Per-connection rep detector that grades each rep against the athlete's active skill."""
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
+        self.reps = 0
+        self.reload()
+        self._reset_rep()
+        self.last_ts: int | None = None
+        self.last_wrist: tuple[float, float] | None = None
+        self.last_metrics_ms = -LIVE_METRICS_INTERVAL_MS
+        self.last_framing_cue_ms = -LIVE_FRAMING_CUE_INTERVAL_MS
+        self.knee_window: list[tuple[int, float]] = []
+        self.base_hip_x: float | None = None
+        self.recovery_from_ms: int | None = None
+        self.slow_recovery = False
+
+    def reload(self) -> dict[str, Any]:
+        memory = db_mongo.get_athlete_memory(self.user_id)
+        self.sport = memory.get('sport') or 'badminton'
+        self.skill = memory.get('skill_focus') or ('overhead_clear' if self.sport == 'badminton' else 'forehand')
+        self.level = memory.get('level')
+        self.threshold = argon_analysis.level_threshold(self.sport, self.skill, self.level)
+        active = next((n for n in memory.get('curriculum_nodes') or [] if n.get('status') == 'active'), None)
+        self.lesson = active.get('title') if active else None
+        return {'type': 'session', 'sport': self.sport, 'skill': self.skill, 'level': self.level,
+                'threshold_deg': self.threshold, 'active_lesson': self.lesson,
+                'mode': 'overhead_peak' if self.skill in OVERHEAD_SKILLS else 'swing_speed'}
+
+    def _reset_rep(self) -> None:
+        self.in_rep = False
+        self.peak_value = -math.inf
+        self.peak_elbow: float | None = None
+        self.peak_ms = 0
+
+    def ingest(self, frame: LivePoseFrame) -> list[dict[str, Any]]:
+        if self.last_ts is not None and frame.timestamp_ms - self.last_ts < 1000 // LIVE_MAX_FPS:
+            return []
+        lm, aspect, now = frame.landmarks, frame.aspect, frame.timestamp_ms
+        dt_s = (now - self.last_ts) / 1000 if self.last_ts is not None and now > self.last_ts else None
+        self.last_ts = now
+        out: list[dict[str, Any]] = []
+
+        key = (R_SHOULDER, R_ELBOW, R_WRIST, R_HIP, R_KNEE, R_ANKLE)
+        if any(len(lm[i]) < 4 or lm[i][3] < 0.5 for i in key):
+            self.last_wrist = None
+            if now - self.last_framing_cue_ms >= LIVE_FRAMING_CUE_INTERVAL_MS:
+                self.last_framing_cue_ms = now
+                out.append(self._cue('Step back so your whole body is visible.', now, kind='framing'))
+            return out
+
+        elbow = _angle_deg(lm[R_SHOULDER], lm[R_ELBOW], lm[R_WRIST], aspect)
+        knee = _angle_deg(lm[R_HIP], lm[R_KNEE], lm[R_ANKLE], aspect)
+        hip_x = (lm[R_HIP][0] + lm[L_HIP][0]) / 2
+        self.knee_window = [(t, k) for t, k in self.knee_window if now - t <= 1500] + [(now, knee)]
+        wrist = (lm[R_WRIST][0] * aspect, lm[R_WRIST][1])
+        speed = (math.dist(wrist, self.last_wrist) / dt_s) if dt_s and self.last_wrist else 0.0
+        self.last_wrist = wrist
+
+        if self.recovery_from_ms is not None and self.base_hip_x is not None:
+            if abs(hip_x - self.base_hip_x) <= 0.05:
+                self.slow_recovery = now - self.recovery_from_ms > RECOVERY_TARGET_MS
+                self.recovery_from_ms = None
+            elif now - self.recovery_from_ms > RECOVERY_TARGET_MS:
+                self.slow_recovery, self.recovery_from_ms = True, None
+
+        if self.skill in OVERHEAD_SKILLS:
+            raised = lm[R_WRIST][1] < lm[R_SHOULDER][1] - 0.05
+            height = -lm[R_WRIST][1]
+            if raised and not self.in_rep:
+                self.in_rep, self.base_hip_x = True, self.base_hip_x if self.recovery_from_ms else hip_x
+            rep_done = self.in_rep and not raised
+        else:
+            height = speed
+            if speed >= SWING_SPEED_START and not self.in_rep:
+                self.in_rep, self.base_hip_x = True, hip_x
+            rep_done = self.in_rep and speed <= SWING_SPEED_END and self.peak_elbow is not None
+        if self.in_rep and height > self.peak_value:
+            self.peak_value, self.peak_elbow, self.peak_ms = height, elbow, now
+
+        if rep_done:
+            out.append(self._grade_rep(now))
+        if now - self.last_metrics_ms >= LIVE_METRICS_INTERVAL_MS:
+            self.last_metrics_ms = now
+            out.append({'type': 'metrics', 'elbow_deg': round(elbow, 1), 'knee_deg': round(knee, 1),
+                        'reps': self.reps, 'in_rep': self.in_rep, 'pose_visible': True, 'timestamp_ms': now})
+        return out
+
+    def _grade_rep(self, now: int) -> dict[str, Any]:
+        self.reps += 1
+        elbow = self.peak_elbow or 0.0
+        load = min(k for _, k in self.knee_window)
+        deficit = self.threshold - elbow
+        if deficit > 8:
+            cue, focus = 'Straighten your elbow and reach higher at contact.', 'elbow'
+        elif deficit > 0:
+            cue, focus = 'Almost there. Extend a little more at contact.', 'elbow'
+        elif load > KNEE_LOAD_TARGET_DEG:
+            cue, focus = 'Bend your knees more before you swing.', 'knee'
+        elif self.slow_recovery:
+            cue, focus = 'Recover to base faster after each shot.', 'recovery'
+        else:
+            cue, focus = 'Great rep. Keep that full extension.', 'positive'
+        self.slow_recovery = False
+        self.recovery_from_ms = now
+        self._reset_rep()
+        msg = self._cue(cue, now, kind=focus)
+        msg.update(rep=self.reps, metrics={'elbow_at_contact_deg': round(elbow, 1), 'min_knee_deg': round(load, 1),
+                                           'threshold_deg': self.threshold})
+        return msg
+
+    def _cue(self, text: str, now: int, kind: str) -> dict[str, Any]:
+        return {'type': 'cue', 'cue': text, 'focus': kind, 'skill': self.skill, 'timestamp_ms': now,
+                'source': 'live_pose_rules', 'vision_analyzed': True}
 
 
 class UserSchedule(BaseModel):
@@ -465,12 +617,18 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
 
     @router.websocket('/live/stream')
     async def live(websocket: WebSocket) -> None:
+        """Live drill stream: `pose` frames get rep-graded form cues; bare `{heart_rate}` packets keep the HR rule."""
         try:
             identity = authenticate(websocket.headers, websocket.cookies)
         except HTTPException:
             await websocket.close(code=4401)
             return
+        user_id = websocket.query_params.get('user_id') or identity['user_id']
+        if identity['role'] != 'admin' and user_id != identity['user_id']:
+            await websocket.close(code=4403)
+            return
         await websocket.accept()
+        coach: LiveFormCoach | None = None
         try:
             while True:
                 packet = await websocket.receive_json()
@@ -481,6 +639,22 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                     return
                 if not isinstance(packet, dict):
                     await websocket.send_json({'error': 'Expected a telemetry object'})
+                    continue
+                kind = packet.get('type')
+                if kind in ('hello', 'refresh', 'pose') and coach is None:
+                    coach = await run_in_threadpool(LiveFormCoach, user_id)
+                if kind in ('hello', 'refresh'):
+                    # refresh: re-read athlete_memory after a voice command changed level or skill.
+                    await websocket.send_json(await run_in_threadpool(coach.reload))
+                    continue
+                if kind == 'pose':
+                    try:
+                        frame = LivePoseFrame.model_validate(packet)
+                    except ValidationError:
+                        await websocket.send_json({'error': 'pose needs 33 [x, y, z, visibility] landmarks'})
+                        continue
+                    for message in coach.ingest(frame):
+                        await websocket.send_json(message)
                     continue
                 try:
                     # The branch's keyframe packets have no timestamp field requirement.

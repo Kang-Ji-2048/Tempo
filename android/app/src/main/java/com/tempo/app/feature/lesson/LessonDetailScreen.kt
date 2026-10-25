@@ -52,6 +52,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
+import com.tempo.app.feature.voice.VoiceMicButton
 import com.tempo.app.network.TempoApi
 import com.tempo.app.ui.theme.AccentNeonVolt
 import com.tempo.app.ui.theme.BackgroundOnyx
@@ -151,7 +152,8 @@ class LessonDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.value = LessonUiState(isLoading = true)
+            // Only show the spinner on first load; voice-driven refreshes update in place.
+            if (_uiState.value.node == null) _uiState.value = LessonUiState(isLoading = true)
             _uiState.value = try {
                 val memory = tempoApi.getCoachMemory().athleteMemory
                 val node = (memory?.get("curriculum_nodes") as? JsonArray)
@@ -232,6 +234,17 @@ fun LessonDetailScreen(
             }
             else -> {
                 item { LessonHeader(node) }
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = SurfaceCharcoal,
+                        border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        // "Mark this lesson complete" or "explain the trophy pose" both land here.
+                        VoiceMicButton(channel = "app", modifier = Modifier.padding(16.dp), onExchange = { viewModel.load() })
+                    }
+                }
                 if (node.steps.isNotEmpty()) item { StepsCard(node.steps) }
                 item {
                     ReferenceVideoCard(node) {

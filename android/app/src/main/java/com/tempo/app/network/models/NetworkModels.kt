@@ -149,7 +149,9 @@ sealed interface NetworkResult<out T> {
 data class CoachConverseRequestDto(
     @SerialName("user_id") val userId: String? = null,
     val message: String,
-    @SerialName("session_id") val sessionId: String? = null
+    @SerialName("session_id") val sessionId: String? = null,
+    /** app | live | whatsapp | gemini: shapes how long and how spoken Thea's reply is. */
+    val channel: String = "app"
 )
 
 @Serializable
@@ -158,5 +160,8 @@ data class CoachConverseResponseDto(
     @SerialName("audio_cue_url") val audioCueUrl: String? = null,
     @SerialName("audio_cue_text") val audioCueText: String? = null,
     @SerialName("dynamic_widgets") val dynamicWidgets: List<JsonObject> = emptyList(),
-    @SerialName("latency_ms") val latencyMs: Int? = null
+    @SerialName("latency_ms") val latencyMs: Int? = null,
+    @SerialName("speak_text") val speakText: String? = null,
+    @SerialName("tool_actions_taken") val toolActionsTaken: List<String> = emptyList(),
+    @SerialName("athlete_memory") val athleteMemory: JsonObject? = null
 )

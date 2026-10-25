@@ -17,6 +17,13 @@
 
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <!-- Package visibility for on-device speech-to-text and text-to-speech engines (API 30+). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

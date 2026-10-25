@@ -79,6 +79,7 @@ import com.tempo.app.feature.home.TheaMessage
 import com.tempo.app.feature.home.TheaSender
 import com.tempo.app.feature.sdui.model.PathProgressWidget
 import com.tempo.app.feature.lesson.LessonRoutes
+import com.tempo.app.feature.voice.VoiceMicButton
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
 import com.tempo.app.ui.theme.AccentNeonVolt
@@ -416,6 +417,22 @@ fun HomeScreen(
                         widget = pathWidget,
                         onAction = { viewModel.onWidgetAction(it) },
                         onPathNodeClick = { nodeId -> navController.navigate(LessonRoutes.lesson(nodeId)) }
+                    )
+                }
+            }
+
+            // Two-way voice: speak to Thea; her tools mutate athlete_memory, so re-render from it.
+            item(key = "voice_mic") {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = SurfaceCharcoal,
+                    border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    VoiceMicButton(
+                        channel = "app",
+                        modifier = Modifier.padding(16.dp),
+                        onExchange = { viewModel.refreshFromMemory() }
                     )
                 }
             }
