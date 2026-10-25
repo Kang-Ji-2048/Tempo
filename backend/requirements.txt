@@ -11,3 +11,4 @@ tzdata
 bcrypt
 email-validator
 pydantic-settings
+truststore

@@ -29,6 +29,14 @@ from urllib.parse import urlencode
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+try:
+    # Verify HTTPS (ElevenLabs, Gemini) against the OS certificate store, so laptops whose antivirus
+    # or proxy intercepts TLS still connect.
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
