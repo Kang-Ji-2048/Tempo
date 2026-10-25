@@ -78,6 +78,7 @@ import com.tempo.app.feature.home.HomeViewModel
 import com.tempo.app.feature.home.TheaMessage
 import com.tempo.app.feature.home.TheaSender
 import com.tempo.app.feature.sdui.model.PathProgressWidget
+import com.tempo.app.feature.lesson.LessonRoutes
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
 import com.tempo.app.ui.theme.AccentNeonVolt
@@ -413,7 +414,8 @@ fun HomeScreen(
                 item(key = "top_path_progress") {
                     WidgetRenderer(
                         widget = pathWidget,
-                        onAction = { viewModel.onWidgetAction(it) }
+                        onAction = { viewModel.onWidgetAction(it) },
+                        onPathNodeClick = { nodeId -> navController.navigate(LessonRoutes.lesson(nodeId)) }
                     )
                 }
             }

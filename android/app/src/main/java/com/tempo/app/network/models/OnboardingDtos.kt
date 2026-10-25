@@ -48,6 +48,7 @@ data class CoachMemoryHeaderDto(
 /** `GET /api/v1/coach/memory`: the shared athlete_memory rendered as home-screen SDUI widgets. */
 @Serializable
 data class CoachMemoryResponseDto(
+    @SerialName("athlete_memory") val athleteMemory: JsonObject? = null,
     val header: CoachMemoryHeaderDto = CoachMemoryHeaderDto(),
     val widgets: List<JsonObject> = emptyList(),
     @SerialName("onboarding_complete") val onboardingComplete: Boolean = false

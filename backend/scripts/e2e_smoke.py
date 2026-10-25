@@ -112,6 +112,30 @@ def run_smoke():
         _print_table(steps_table)
         sys.exit(1)
 
+    # Step 4b: Onboard through the shared-memory assessment so the athlete has a lesson plan
+    t0 = time.perf_counter()
+    answers: Dict[str, str] = {}
+    step = None
+    for step_id, answer in [("sport", "badminton"), ("level_q1", "1"), ("level_q2", "1"), ("goal", "technique_refinement"),
+                            ("intensity", "regular_3x"), ("schedule", "next")]:
+        answers[step_id] = answer
+        step = requests.post(f"{BASE_URL}/api/v1/onboarding/next", headers=headers, timeout=60,
+                             json={"step_id": step_id, "answer": answer, "answers": answers})
+        if step.status_code != 200:
+            break
+    dt = int((time.perf_counter() - t0) * 1000)
+    memory_res = requests.get(f"{BASE_URL}/api/v1/coach/memory", headers=headers, timeout=5)
+    nodes = memory_res.json().get("athlete_memory", {}).get("curriculum_nodes", []) if memory_res.ok else []
+    if step is not None and step.status_code == 200 and step.json().get("is_completed") and nodes:
+        active_node = next(n for n in nodes if n["status"] == "active")
+        steps_table.append({"Step": "4b. Onboarding", "Status": "PASS", "Time_ms": dt,
+                            "Detail": f"{len(nodes)} lessons ({step.json().get('llm_source')}); active: {active_node['id']}"})
+    else:
+        steps_table.append({"Step": "4b. Onboarding", "Status": "FAIL", "Time_ms": dt,
+                            "Detail": f"HTTP {step.status_code if step is not None else '-'}: {step.text[:120] if step is not None else ''}"})
+        _print_table(steps_table)
+        sys.exit(1)
+
     # Step 5: Check fixture clip
     print(f"\nChecking clip fixture at: {FIXTURE_PATH}")
     if not FIXTURE_PATH.exists():
@@ -136,6 +160,7 @@ def run_smoke():
         "user_id": user_id,
         "sport": "badminton",
         "stroke_type": "overhead_clear",
+        "node_id": active_node["id"],
         "telemetry": [],
     }
     with open(FIXTURE_PATH, "rb") as video_file:
@@ -193,6 +218,49 @@ def run_smoke():
 
     dt = int((time.perf_counter() - t0) * 1000)
     steps_table.append({"Step": "7. Assertions", "Status": "PASS", "Time_ms": dt, "Detail": f"Source: {llm_source}, Video: {video_used}"})
+
+    # Step 8: Pro comparison + adaptive curriculum mutation
+    t0 = time.perf_counter()
+    feedback = session_data.get("gemini_feedback") or {}
+    card = feedback.get("pro_comparison_card") or {}
+    adaptation = session_data.get("adaptation") or {}
+    score = session_data.get("overall_score")
+    assert isinstance(score, int) and feedback.get("overall_score") == score, "overall_score must be reported"
+    assert card.get("matched_pro") and card.get("angles"), "pro comparison card must carry angle deltas"
+    assert card.get("sport") == "badminton", "pro match must be filtered to the athlete's sport"
+    after = requests.get(f"{BASE_URL}/api/v1/coach/memory", headers=headers, timeout=5).json()["athlete_memory"]
+    node_after = next(n for n in after["curriculum_nodes"] if n["id"] == active_node["id"])
+    if score >= 80:
+        assert adaptation.get("action") == "lesson_completed" and node_after["status"] == "completed"
+        detail = f"score {score} -> completed {active_node['id']}, next {adaptation.get('next_node_id')}"
+    else:
+        assert adaptation.get("action") == "remedial_assigned" and node_after.get("remedial_quiz")
+        assert any(d.get("node_id") == active_node["id"] for d in after.get("assigned_drills", []))
+        kinds = [w["widget_type"] for w in active_widgets]
+        assert "DrillCardWidget" in kinds and "ConceptQuizWidget" in kinds
+        detail = f"score {score} -> remedial drill + quiz on {active_node['id']}"
+    assert after["recent_flaws"][0]["session_id"] == session_id
+    elbow = next((a for a in card["angles"] if a["metric"] == "right_elbow_contact_deg"), {})
+    print(f"pro: {card['matched_pro']} ({card.get('search_method')}), elbow {elbow.get('athlete_deg')} vs "
+          f"{elbow.get('pro_deg')} (delta {elbow.get('delta_deg')}), adaptation: {adaptation.get('action')}")
+    dt = int((time.perf_counter() - t0) * 1000)
+    steps_table.append({"Step": "8. Adaptive Plan", "Status": "PASS", "Time_ms": dt, "Detail": detail})
+
+    # Step 9: SDUI completion callback reaches athlete_memory
+    t0 = time.perf_counter()
+    quiz = next((w for w in active_widgets if w["widget_type"] == "ConceptQuizWidget"), None)
+    if quiz:
+        res = requests.post(f"{BASE_URL}/api/v1/sdui/actions", headers=headers, timeout=10, json={
+            "session_id": session_id, "action_type": "QuizAnswered", "widget_id": quiz["id"],
+            "payload": {"selected_index": quiz["correct_index"]}})
+        assert res.status_code == 200, res.text
+        answered = next(w for w in res.json()["widgets"] if w.get("id") == quiz["id"])
+        assert answered["answered_index"] == quiz["correct_index"]
+        detail = f"QuizAnswered {quiz['id']} persisted"
+    else:
+        detail = "no quiz on a passing clip"
+    dt = int((time.perf_counter() - t0) * 1000)
+    steps_table.append({"Step": "9. SDUI Action", "Status": "PASS", "Time_ms": dt, "Detail": detail})
     _print_table(steps_table)
 
 

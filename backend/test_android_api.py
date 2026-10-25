@@ -61,7 +61,9 @@ class AndroidBridgeTests(unittest.TestCase):
         self.assertEqual(record['kinematic_vector'], analysis_payload()['pose_analysis']['pose_vector'])
         self.assertEqual(record['pipeline_session_id'], 'canonical-analysis-id')
         self.assertEqual(record['active_widgets'][0]['widget_type'], 'DrillCardWidget')
-        self.assertNotIn('overall_score', record['gemini_feedback'])
+        # The measured, threshold-consistent score drives the adaptive curriculum, so it is reported.
+        self.assertEqual(record['gemini_feedback']['overall_score'], record['overall_score'])
+        self.assertEqual(record['adaptation']['action'], 'no_active_lesson')
         self.assertEqual(record['storage_mode'], 'in_memory_fallback')
         self.assertNotIn('telemetry', record)
 

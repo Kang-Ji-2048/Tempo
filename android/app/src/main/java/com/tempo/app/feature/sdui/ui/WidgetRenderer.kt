@@ -27,9 +27,10 @@ fun WidgetRenderer(
     widget: Widget,
     onAction: (WidgetAction) -> Unit,
     modifier: Modifier = Modifier,
+    onPathNodeClick: ((String) -> Unit)? = null,
 ) {
     when (widget) {
-        is PathProgressWidget -> PathProgressCard(widget, modifier)
+        is PathProgressWidget -> PathProgressCard(widget, modifier, onPathNodeClick?.let { open -> { node -> open(node.nodeId) } })
         is DrillCardWidget -> DrillCard(widget, onAction, modifier)
         is ConceptQuizWidget -> ConceptQuizCard(widget, onAction, modifier)
         is CheckInScheduleWidget -> CheckInScheduleCard(widget, onAction, modifier)

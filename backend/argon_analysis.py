@@ -22,11 +22,11 @@ from google.genai import types
 
 try:
     if __package__:
-        from . import llm_config, sports_config
+        from . import db_mongo, llm_config, sports_config
     else:
-        import llm_config, sports_config
+        import db_mongo, llm_config, sports_config
 except ImportError:
-    import llm_config, sports_config
+    import db_mongo, llm_config, sports_config
 
 logger = logging.getLogger("tempo.argon")
 
@@ -88,6 +88,63 @@ ANALYSIS_RESPONSE_SCHEMA = {
 }
 
 
+ANGLE_LABELS = {
+    "right_elbow_contact_deg": "Elbow extension at contact",
+    "right_shoulder_abduction_deg": "Shoulder abduction",
+    "trunk_arch_deg": "Trunk arch",
+    "right_knee_flexion_deg": "Knee flexion",
+    "left_arm_balance_deg": "Non-racket arm balance",
+}
+PASS_SCORE_FLOOR = 80  # PASS scores never drop below this; FAIL scores never reach it.
+
+
+def compute_pro_deltas(pose_data: Dict[str, Any], pro_match: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Measured athlete angles vs. the matched pro's reference angles (athlete minus pro)."""
+    deltas = []
+    for metric, label in ANGLE_LABELS.items():
+        athlete, pro = pose_data.get(metric), pro_match.get(metric)
+        if isinstance(athlete, (int, float)) and isinstance(pro, (int, float)):
+            deltas.append({"metric": metric, "label": label, "athlete_deg": round(float(athlete), 1),
+                           "pro_deg": round(float(pro), 1), "delta_deg": round(float(athlete) - float(pro), 1)})
+    return deltas
+
+
+def load_athlete_context(user_name: str) -> Dict[str, Any]:
+    """The athlete's shared memory plus their active lesson node ({} if unavailable)."""
+    try:
+        memory = db_mongo.get_athlete_memory(user_name)
+    except Exception as exc:
+        logger.warning("athlete_memory unavailable for %s: %s", user_name, exc)
+        return {}
+    nodes = memory.get("curriculum_nodes") or []
+    return {"memory": memory, "active_node": next((n for n in nodes if n.get("status") == "active"), None)}
+
+
+def resolve_skill(sport_id: str, skill_id: str, memory: Dict[str, Any]) -> tuple[str, str]:
+    """Prefer the athlete's own sport/skill focus from memory over the caller's defaults."""
+    sport, skill = memory.get("sport"), memory.get("skill_focus")
+    if sport and skill and sports_config.is_skill_analysis_ready(sport, skill):
+        return sport, skill
+    return sport_id, skill_id
+
+
+def level_threshold(sport_id: str, skill_id: str, level: Optional[str]) -> float:
+    """Elbow-extension pass threshold calibrated to the athlete's level when the rubric has one."""
+    skill_def = sports_config.get_skill(sport_id, skill_id)
+    if skill_def is None:
+        return 165.0
+    target = skill_def.rubric_by_level.get(level or "", {}).get("elbow_target_deg")
+    return float(target) if target else float(skill_def.threshold_pass_deg)
+
+
+def measured_score(elbow_deg: float, threshold: float, similarity: float) -> int:
+    """0-100 from the measured extension deficit and pro-vector similarity, consistent with PASS/FAIL."""
+    deficit = max(0.0, threshold - elbow_deg)
+    score = round(100 - 2.5 * deficit - 200 * max(0.0, 1.0 - similarity))
+    score = max(0, min(100, score))
+    return max(score, PASS_SCORE_FLOOR) if elbow_deg >= threshold else min(score, PASS_SCORE_FLOOR - 1)
+
+
 def build_deterministic_fallback(
     user_name: str,
     sport_id: str,
@@ -96,6 +153,7 @@ def build_deterministic_fallback(
     watch_metrics: Dict[str, Any],
     pro_match: Dict[str, Any],
     partner_match: Optional[Dict[str, Any]] = None,
+    threshold_deg: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Generates an honest, deterministic report grounded strictly in measured metrics."""
     elbow_deg = float(pose_data.get("right_elbow_contact_deg", 158.4))
@@ -105,7 +163,7 @@ def build_deterministic_fallback(
     height_norm = float(pose_data.get("contact_height_norm", 0.78))
 
     skill_def = sports_config.get_skill(sport_id, skill_id)
-    threshold = skill_def.threshold_pass_deg if skill_def else 165.0
+    threshold = threshold_deg if threshold_deg is not None else (skill_def.threshold_pass_deg if skill_def else 165.0)
     passed = elbow_deg >= threshold
     verification_status = "PASS" if passed else "FAIL"
 
@@ -125,8 +183,8 @@ def build_deterministic_fallback(
     venue = partner.get("preferred_venue", "Finsbury Leisure Centre")
     slot = partner.get("availability", "Tomorrow 18:00 UTC")
 
+    overall_score = measured_score(elbow_deg, threshold, sim_score)
     if passed:
-        overall_score = 88
         primary_flaw = f"Full extension achieved ({elbow_deg:.1f}° at contact)"
         diagnosis = (
             f"VERIFIED PASS: {user_name} achieved {elbow_deg:.1f}° elbow extension at contact "
@@ -137,7 +195,6 @@ def build_deterministic_fallback(
         cue = "Maintain full high reach at contact apex."
         voice_script = f"Great stroke mechanics today. Your elbow reached {elbow_deg:.1f} degrees at contact. Keep this high contact point consistent."
     else:
-        overall_score = 68
         primary_flaw = f"Elbow dropped to {elbow_deg:.1f}° at contact (target {threshold:.0f}°)"
         diagnosis = (
             f"VERIFIED FAIL: {user_name}'s elbow angle dropped to {elbow_deg:.1f}° at contact, "
@@ -177,8 +234,22 @@ async def run_biomechanical_analysis(
     video_path: Optional[str] = None,
     partner_match: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Executes Gemini 4 Argon analysis with Files API video upload and structured output."""
+    """Executes Gemini 4 Argon analysis with Files API video upload and structured output.
+
+    The athlete's `athlete_memory` (sport, skill focus, level, active lesson, recent flaws) is
+    loaded here, so callers only pass measured data; it sets the level-calibrated threshold.
+    """
     start_time = time.perf_counter()
+
+    context = load_athlete_context(user_name)
+    memory = context.get("memory") or {}
+    active_node = context.get("active_node")
+    sport_id, skill_id = resolve_skill(sport_id, skill_id, memory)
+    threshold = level_threshold(sport_id, skill_id, memory.get("level"))
+    pro_deltas = compute_pro_deltas(pose_data, pro_match)
+    analysis_context = {"sport_id": sport_id, "skill_id": skill_id, "threshold_deg": threshold,
+                        "athlete_level": memory.get("level"), "pro_deltas": pro_deltas,
+                        "active_node_id": active_node.get("id") if active_node else None}
 
     # Step 1: Precompute authoritative deterministic baseline
     baseline = build_deterministic_fallback(
@@ -189,6 +260,7 @@ async def run_biomechanical_analysis(
         watch_metrics=watch_metrics,
         pro_match=pro_match,
         partner_match=partner_match,
+        threshold_deg=threshold,
     )
 
     skill_def = sports_config.get_skill(sport_id, skill_id)
@@ -202,6 +274,7 @@ async def run_biomechanical_analysis(
         llm_config.update_ai_status(False, error="GEMINI_API_KEY missing", latency_ms=latency_ms)
         return {
             **baseline,
+            **analysis_context,
             "llm_source": "fallback",
             "llm_model": "deterministic_fallback",
             "llm_error": "GEMINI_API_KEY is not configured",
@@ -244,16 +317,28 @@ async def run_biomechanical_analysis(
         "Use the video only to describe what the movement looks like and to judge things not in the measured data.\n"
         "You are Tempo, an elite on-court coach. Talk like a person on court: warm, direct, level-calibrated, brief. "
         "Each session ends with ONE primary fix, never a list of eight. Everything you say about the athlete's body "
-        "must come from measured data passed to you. Never invent numbers."
+        "must come from measured data passed to you. Never invent numbers.\n"
+        "verification_status is decided by the measured elbow angle against the level threshold below. "
+        f"overall_score is 0-100 and must be >= {PASS_SCORE_FLOOR} only for PASS. "
+        "Make live_drill_prescription one concrete drill that targets the largest pro delta, "
+        "pitched at the athlete's level and tied to their active lesson."
     )
+    memory_block = {
+        "level": memory.get("level"), "motivation": memory.get("motivation_why"),
+        "intensity": memory.get("intensity"),
+        "active_lesson": {k: active_node.get(k) for k in ("id", "title", "tips")} if active_node else None,
+        "recent_flaws": (memory.get("recent_flaws") or [])[:3],
+    }
 
     measured_data_block = (
         f"MEASURED DATA:\n"
         f"Athlete: {user_name} | Sport: {sport_name} | Skill: {skill_name}\n"
         f"3D Joint Angles: {json.dumps(pose_data, indent=2)}\n"
         f"Apple Watch Biometrics: {json.dumps(watch_metrics, indent=2)}\n"
-        f"Closest Pro Match: {json.dumps(pro_match, indent=2)}\n"
-        f"Rule Threshold: {skill_def.threshold_pass_deg if skill_def else 165.0}° elbow angle at contact is PASS, else FAIL.\n"
+        f"Closest Pro Match: {json.dumps(pro_match, indent=2, default=str)}\n"
+        f"Pro Deltas (athlete minus pro, degrees): {json.dumps(pro_deltas, indent=2)}\n"
+        f"Athlete Memory: {json.dumps(memory_block, indent=2, default=str)}\n"
+        f"Rule Threshold ({memory.get('level') or 'default'} level): {threshold:.0f}° elbow angle at contact is PASS, else FAIL.\n"
         f"Training Partner: {json.dumps(partner_match or {}, indent=2)}\n"
     )
 
@@ -307,8 +392,14 @@ async def run_biomechanical_analysis(
 
     if response_data is not None:
         llm_config.update_ai_status(True, latency_ms=latency_ms)
+        # Measured numbers are authoritative: PASS/FAIL comes from the threshold, and the score must agree.
+        response_data["verification_status"] = baseline["verification_status"]
+        score = int(response_data["overall_score"])
+        response_data["overall_score"] = (max(score, PASS_SCORE_FLOOR) if baseline["verification_status"] == "PASS"
+                                          else min(score, PASS_SCORE_FLOOR - 1))
         return {
             **response_data,
+            **analysis_context,
             "llm_source": "gemini",
             "llm_model": llm_config.GEMINI_MODEL,
             "llm_error": None,
@@ -320,6 +411,7 @@ async def run_biomechanical_analysis(
         llm_config.update_ai_status(False, error=llm_error, latency_ms=latency_ms)
         return {
             **baseline,
+            **analysis_context,
             "llm_source": "fallback",
             "llm_model": "deterministic_fallback",
             "llm_error": llm_error,
