@@ -248,6 +248,11 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(call['response_format']['mime_type'], 'application/json')
         self.assertEqual(call['generation_config']['thinking_level'], 'high')
 
+    def test_uploaded_sport_selects_its_own_skill(self):
+        self.assertEqual(main.analysis_skill('tennis'), ('tennis', 'forehand'))
+        self.assertEqual(main.analysis_skill('Badminton'), ('badminton', 'overhead_clear'))
+        self.assertEqual(main.analysis_skill('curling'), ('badminton', 'overhead_clear'))
+
 
 if __name__ == '__main__':
     unittest.main()
