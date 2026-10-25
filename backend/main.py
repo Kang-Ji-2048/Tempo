@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import json
+import logging
 import os
 import tempfile
 from html import escape
@@ -38,6 +39,7 @@ if __package__:
     from .auth import install_auth, own, principal, event_visible, authenticate
     from .telemetry_time import require_recent
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    from . import saint_events
     from .argon_analysis import run_biomechanical_analysis
     from . import sports_config, llm_config, user_auth, coach_converse
     from .api.v1 import onboarding as onboarding_api
@@ -68,6 +70,7 @@ else:
     from auth import install_auth, own, principal, event_visible, authenticate
     from telemetry_time import require_recent
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
+    import saint_events
     from argon_analysis import run_biomechanical_analysis
     import sports_config, llm_config, user_auth, coach_converse
     from api.v1 import onboarding as onboarding_api
@@ -357,6 +360,15 @@ async def analyze_badminton_pipeline(
                 "overall_score": agent_output.get("overall_score"),
             },
         )
+
+        # An Argon FAIL becomes a court proposal pushed to Saint; Saint asks the player before booking.
+        try:
+            verdict_event = saint_events.argon_verdict(user_name, {
+                **agent_output, "right_elbow_contact_deg": pose_result["raw_angles"].get("right_elbow_contact_deg")})
+            if verdict_event is not None:
+                await run_in_threadpool(saint_events.push, verdict_event)
+        except Exception:
+            logging.getLogger("tempo.main").warning("Saint verdict event not pushed", exc_info=True)
 
         if os.environ.get('TEMPO_REQUIRE_LIVE_MODEL', 'false').lower() == 'true' and agent_output.get('llm_source') != 'gemini':
             raise HTTPException(503, 'Live coaching model unavailable; consult the runtime validation report')
@@ -1556,6 +1568,7 @@ if __package__:
 else:
     from saint_commands import router as saint_command_router
 app.include_router(saint_command_router)
+app.include_router(saint_events.router)
 
 # Shared-memory onboarding assessment + home feed (replaces app.api.v1.onboarding on the same path).
 app.include_router(onboarding_api.router)
