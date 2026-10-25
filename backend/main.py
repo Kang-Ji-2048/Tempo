@@ -41,7 +41,7 @@ if __package__:
     from .agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     from . import saint_events
     from .argon_analysis import run_biomechanical_analysis
-    from . import sports_config, llm_config, user_auth, coach_converse
+    from . import sports_config, llm_config, user_auth, coach_converse, voice_tts
     from .api.v1 import onboarding as onboarding_api
     from .api.v1 import omnichannel as omnichannel_api
     from .db_mongo import (
@@ -72,7 +72,7 @@ else:
     from agent_argon_saint import dispatch_saint_webhook, run_argon_and_saint_agent
     import saint_events
     from argon_analysis import run_biomechanical_analysis
-    import sports_config, llm_config, user_auth, coach_converse
+    import sports_config, llm_config, user_auth, coach_converse, voice_tts
     from api.v1 import onboarding as onboarding_api
     from api.v1 import omnichannel as omnichannel_api
     from db_mongo import (
@@ -1585,6 +1585,8 @@ app.include_router(omnichannel_api.router)
 
 # Unified omnichannel Coach Thea.
 app.include_router(coach_converse.router)
+# Coach Thea's ElevenLabs voice (falls back to on-device TTS in the app without a key).
+app.include_router(voice_tts.router)
 
 try:
     from app.api.v1.sdui import router as sdui_router

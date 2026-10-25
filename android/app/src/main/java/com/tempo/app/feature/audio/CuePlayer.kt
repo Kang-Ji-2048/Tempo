@@ -37,13 +37,15 @@ sealed interface CueEvent {
  * Rules:
  * - Minimum 10-second gap between automatic form cues (rate limiting); cues inside the window are
  *   suppressed. Spoken answers to voice questions go through VoiceConversationManager, not here.
+ * - Text cues are spoken in the ElevenLabs coach voice via [CoachVoice], falling back to on-device TTS.
  * - Routes audio to Bluetooth earbuds via AudioAttributes (USAGE_MEDIA, CONTENT_TYPE_SPEECH)
  *   with audio focus handling.
  * - Ready for live edge stream mode.
  */
 @Singleton
 class CuePlayer @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val coachVoice: CoachVoice,
 ) {
     companion object {
         const val TAG = "CuePlayer"
@@ -140,7 +142,7 @@ class CuePlayer @Inject constructor(
                 if (!audioUrl.isNullOrBlank()) {
                     playAudioUrl(audioUrl)
                 } else if (!cueText.isNullOrBlank()) {
-                    speakText(cueText)
+                    coachVoice.speak(cueText, onFallback = ::speakText)
                 }
 
                 scope.launch {
@@ -195,6 +197,7 @@ class CuePlayer @Inject constructor(
     }
 
     fun stop() {
+        coachVoice.stop()
         exoPlayer?.stop()
         textToSpeech?.stop()
     }

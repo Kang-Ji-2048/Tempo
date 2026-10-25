@@ -9,6 +9,8 @@ Use the dev runner script from the repo root:
 2. Print your machine's local LAN IPv4 addresses.
 3. Start `uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload`.
 
+> **Live drill voice (ElevenLabs):** add `ELEVENLABS_API_KEY` to `backend/.env` (optional: `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, default `eleven_flash_v2_5`). The app streams live-drill cues, Thea's live replies and the set summary from `GET /api/v1/tts`; without a key it falls back to on-device TTS. Never commit the key.
+
 > **macOS Firewall Note:** If physical phones cannot connect, open **System Settings -> Network -> Firewall** and ensure incoming connections to Python / uvicorn are allowed, or temporarily disable the firewall during local development.
 
 ---

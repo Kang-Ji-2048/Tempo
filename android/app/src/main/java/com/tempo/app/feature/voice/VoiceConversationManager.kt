@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tempo.app.data.PlayerIdentity
+import com.tempo.app.feature.audio.CoachVoice
 import com.tempo.app.network.TempoApi
 import com.tempo.app.network.models.CoachConverseRequestDto
 import com.tempo.app.ui.theme.AccentNeonVolt
@@ -129,6 +130,7 @@ class VoiceConversationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val tempoApi: TempoApi,
     private val identity: PlayerIdentity,
+    private val coachVoice: CoachVoice,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var recognizer: SpeechRecognizer? = null
@@ -197,6 +199,7 @@ class VoiceConversationManager @Inject constructor(
             return
         }
         tts?.stop()
+        coachVoice.stop()
         activeChannel = channel
         val sr = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
         sr.setRecognitionListener(listener)
@@ -214,6 +217,7 @@ class VoiceConversationManager @Inject constructor(
         recognizer?.cancel()
         conversationJob?.cancel()
         tts?.stop()
+        coachVoice.stop()
         _state.value = VoiceState.Idle
     }
 
@@ -261,13 +265,20 @@ class VoiceConversationManager @Inject constructor(
     }
 
     /** Speak a coach line immediately (e.g. a set summary) without a listening turn. */
-    fun announce(text: String) {
+    fun announce(text: String, channel: String = activeChannel) {
         if (text.isBlank()) return
+        activeChannel = channel
         _state.value = VoiceState.Speaking("", text)
         speak(text)
     }
 
     private fun speak(text: String) {
+        // Live drills use the ElevenLabs coach voice; other channels keep on-device TTS.
+        if (activeChannel == "live") coachVoice.speak(text, onDone = ::settle, onFallback = ::speakOnDevice)
+        else speakOnDevice(text)
+    }
+
+    private fun speakOnDevice(text: String) {
         if (ttsReady) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "thea_${System.currentTimeMillis()}")
         } else {
