@@ -252,41 +252,44 @@ def build_deterministic_fallback(
     partner_match: Optional[Dict[str, Any]] = None,
     threshold_deg: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Generates an honest, deterministic report grounded strictly in measured metrics."""
-    elbow_deg = float(pose_data.get("right_elbow_contact_deg", 158.4))
-    shoulder_deg = float(pose_data.get("right_shoulder_abduction_deg", 142.0))
-    trunk_deg = float(pose_data.get("trunk_arch_deg", 161.5))
-    knee_deg = float(pose_data.get("right_knee_flexion_deg", 152.0))
-    height_norm = float(pose_data.get("contact_height_norm", 0.78))
+    """Generates an honest, deterministic report grounded strictly in measured metrics.
+
+    Only angles present in `pose_data` and a pro reference that was actually matched are quoted.
+    Without a measured elbow angle there is no verdict, so this returns the unmeasured guidance.
+    """
+    if pose_data.get("right_elbow_contact_deg") is None:
+        return build_unmeasured_guidance(user_name, sport_id, skill_id, {})
+    elbow_deg = float(pose_data["right_elbow_contact_deg"])
 
     skill_def = sports_config.get_skill(sport_id, skill_id)
     threshold = threshold_deg if threshold_deg is not None else (skill_def.threshold_pass_deg if skill_def else 165.0)
     passed = elbow_deg >= threshold
     verification_status = "PASS" if passed else "FAIL"
 
-    pro_name = pro_match.get("player_name", "Roger Federer")
-    pro_elbow = float(pro_match.get("right_elbow_contact_deg", 176.5))
-    sim_score = float(pro_match.get("similarity_score", 0.94))
+    pro_name = pro_match.get("player_name")
+    pro_elbow = pro_match.get("right_elbow_contact_deg")
+    has_pro = bool(pro_name) and isinstance(pro_elbow, (int, float))
+    # No matched pro means no similarity penalty: the score then rests on the measured elbow alone.
+    sim_score = float(pro_match.get("similarity_score") or 1.0) if has_pro else 1.0
 
-    hr_bpm = watch_metrics.get("heart_rate_bpm")
-    calories = watch_metrics.get("active_calories_kcal")
-    fatigue = watch_metrics.get("fatigue_state", "MODERATE_FATIGUE")
+    # Secondary angles are mentioned only when the pose engine measured them.
+    held = [f"{label} ({float(pose_data[key]):.1f}°)" for key, label in (
+        ("right_shoulder_abduction_deg", "Shoulder abduction"), ("trunk_arch_deg", "trunk arch"))
+        if pose_data.get(key) is not None]
 
-    partner = partner_match or {
-        "name": "Arjun Mehta",
-        "preferred_venue": "Finsbury Leisure Centre (EC1V)",
-        "availability": "Tomorrow 18:00 UTC",
-    }
-    venue = partner.get("preferred_venue", "Finsbury Leisure Centre")
-    slot = partner.get("availability", "Tomorrow 18:00 UTC")
+    partner = partner_match or {}
+    venue = partner.get("preferred_venue") or "your usual court"
+    slot = partner.get("availability")
+    with_partner = f" with {partner['name']}" if partner.get("name") else ""
 
     overall_score = measured_score(elbow_deg, threshold, sim_score)
     if passed:
         primary_flaw = f"Full extension achieved ({elbow_deg:.1f}° at contact)"
         diagnosis = (
             f"VERIFIED PASS: {user_name} achieved {elbow_deg:.1f}° elbow extension at contact "
-            f"(threshold {threshold:.0f}°), matching {pro_name}'s {pro_elbow:.1f}° kinematic profile. "
-            f"Shoulder abduction ({shoulder_deg:.1f}°) and trunk arch ({trunk_deg:.1f}°) were maintained."
+            f"(threshold {threshold:.0f}°)"
+            + (f", matching {pro_name}'s {pro_elbow:.1f}° kinematic profile." if has_pro else ".")
+            + (f" {' and '.join(held)} {'was' if len(held) == 1 else 'were'} maintained." if held else "")
         )
         drill = f"Maintain form accuracy with 3x10 target-zone overhead sequences at {venue}."
         cue = "Maintain full high reach at contact apex."
@@ -295,18 +298,21 @@ def build_deterministic_fallback(
         primary_flaw = f"Elbow dropped to {elbow_deg:.1f}° at contact (target {threshold:.0f}°)"
         diagnosis = (
             f"VERIFIED FAIL: {user_name}'s elbow angle dropped to {elbow_deg:.1f}° at contact, "
-            f"which is below the {threshold:.0f}° target and {pro_elbow - elbow_deg:.1f}° lower than {pro_name}'s "
-            f"reference profile (vector similarity {sim_score:.2f})."
+            f"which is below the {threshold:.0f}° target"
+            + (f" and {pro_elbow - elbow_deg:.1f}° lower than {pro_name}'s reference profile "
+               f"(vector similarity {sim_score:.2f})." if has_pro else ".")
         )
         drill = f"Prescribe 4x10 shadow reach extension drills to practice hitting at full extension."
         cue = "Reach up high and brush the contact point."
         voice_script = f"Good effort today, but your elbow dropped to {elbow_deg:.1f} degrees at contact. Focus on reaching up tall to hit at the highest apex."
 
+    when = f" ({slot})" if slot else ""
     saint_job = {
-        "plain_english_instruction": f"Schedule follow-up practice for {user_name} with {partner.get('name')} at {venue} ({slot}).",
-        "proactive_training_notification": f"Practice check: elbow reached {elbow_deg:.1f}° vs {threshold:.0f}° target. Partner available at {venue} ({slot}).",
+        "plain_english_instruction": f"Schedule follow-up practice for {user_name}{with_partner} at {venue}{when}.",
+        "proactive_training_notification": f"Practice check: elbow reached {elbow_deg:.1f}° vs {threshold:.0f}° target."
+        + (f" Partner available at {venue}{when}." if with_partner else ""),
         "requires_human_approval": True,
-        "approval_action_summary": f"Book training court at {venue} with {partner.get('name')}.",
+        "approval_action_summary": f"Book training court at {venue}{with_partner}.",
     }
 
     return {

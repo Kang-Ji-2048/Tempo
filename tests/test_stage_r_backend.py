@@ -443,3 +443,21 @@ def test_upload_clip_for_unsupported_skill_returns_422():
     )
     assert res.status_code == 422
     assert "skill_not_supported_yet" in str(res.json())
+
+
+def test_fallback_quotes_only_measured_angles_and_a_real_pro_match():
+    """Partial pose data and no pro match: no invented shoulder, trunk, pro or partner in the report."""
+    out = argon_analysis.build_deterministic_fallback(
+        "alice", "badminton", "overhead_clear", {"right_elbow_contact_deg": 170.0}, {},
+        {"player_name": None, "validation_status": "not_measured"}, partner_match=None, threshold_deg=165.0)
+    text = json.dumps(out)
+    assert out["verification_status"] == "PASS"
+    for invented in ("142", "161.5", "Roger Federer", "Viktor", "Arjun", "None"):
+        assert invented not in text
+    assert argon_analysis.ungrounded_angles(text, 170.0, 165.0) == []
+
+
+def test_fallback_without_an_elbow_angle_gives_no_verdict():
+    out = argon_analysis.build_deterministic_fallback(
+        "alice", "badminton", "overhead_clear", {"trunk_arch_deg": 150.0}, {}, {}, threshold_deg=165.0)
+    assert out["verification_status"] == argon_analysis.NOT_MEASURED

@@ -34,7 +34,7 @@ Presenter cue: The canonical database is sports_coach_db. Shared player memory a
 
 ## 6. Use of Saint · 1:45–2:10
 
-Saint can receive a signed coaching event and prepare an action. Review the proposal and approve the next step. Tempo's backend checks it, executes once, and records who relayed the approval. Venues remain mocked, so no real booking or payment is made.
+Argon finds the flaw; Saint books the fix. When a stroke fails the elbow check, or a court opens up, Tempo sends Saint a signed event with a ready proposal. Saint asks you in chat, and only after your yes does Tempo's backend book it, once, and log that Saint relayed the approval. When a later clip passes, Saint tells you the fix is verified, with the before and after angles. Venues remain mocked, so no real booking or payment is made.
 
 Presenter cue: Saint events are delivered only when SAINT_WEBHOOK_URL is configured; otherwise use the staged event log. A Saint-scoped credential reaches only Saint routes. The backend records Saint-relayed approvals. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
 
