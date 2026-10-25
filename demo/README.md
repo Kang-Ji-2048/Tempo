@@ -1,15 +1,11 @@
 # Tempo pitch deck
 
-`index.html` is the user-supplied **Tempo Pitch Deck.html**, copied without modifying its content or design. It replaces the earlier generated demo deck.
+Nine slides: Title; Problem; Solution + architecture; Gemini 4 Argon; MongoDB; Saint; Demo; Impact + next steps; Team / questions. The first eight slides total roughly three minutes, including a 15-second walkthrough pause. The team slide is an untimed background for questions, with no scripted team introduction. The supplied warm cream/amber design, embedded logo and presentation controls are retained.
 
-Open it in a browser or publish this directory as a static Vercel site. Its media is embedded; the supplied file requests Manrope fonts from Google Fonts.
+Open `index.html` in a browser. Arrow keys or Previous/Next navigate. F toggles fullscreen; N toggles speaker notes. `presenter-script.md` contains the timed script and demo cues.
 
-Vercel configuration:
+Team credits: Sumanth — Gemini 4 Argon; Taha — MongoDB; Kang — Saint AI; Yue — UX/UI.
 
-- Repository: Kang-Ji-2048/Tempo
-- Root directory: demo
-- Framework preset: Other
-- Build command: leave empty
-- Output directory: .
+The evidence slide distinguishes the earlier real-video test from the current Android/backend connection and action-parser checks. Saint court actions use a deterministic planner and mock venue adapter. No live booking, payment or verified hosted Saint integration is claimed. The earlier pose-angle estimate has no ground-truth validation.
 
-No backend connection is required to show the deck. This commit uploads the source to GitHub; it does not create a Vercel deployment.
+Static Vercel settings: repository Kang-Ji-2048/Tempo, root directory demo, framework Other, no build command, output directory `.`. Updating these files does not create or update a Vercel deployment. Fonts request Manrope from Google Fonts, with system fallbacks.
