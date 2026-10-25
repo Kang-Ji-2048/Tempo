@@ -296,8 +296,14 @@ def next_onboarding_step(req: OnboardingStepRequest,
         sport = sports_config.get_sport(answer)
         if sport is None:
             raise HTTPException(422, f"Unknown sport {answer}")
-        focus = next((s.id for s in sport.skills if s.analysis_ready), sport.skills[0].id if sport.skills else None)
-        memory = toolbox._save({"sport": sport.id, "skill_focus": focus, "recent_flaws": []})
+        # Keep the skill picked on SportSelectionScreen (synced by POST /profile) when it belongs to this sport.
+        picked = memory.get("skill_focus") if memory.get("sport") == sport.id else None
+        focus = picked if any(s.id == picked for s in sport.skills) else next(
+            (s.id for s in sport.skills if s.analysis_ready), sport.skills[0].id if sport.skills else None)
+        updates = {"sport": sport.id, "skill_focus": focus}
+        if memory.get("sport") != sport.id:
+            updates["recent_flaws"] = []
+        memory = toolbox._save(updates)
         current = "sport_saved"
     elif current in ("", "init"):
         current = "sport_saved" if memory.get("sport") else ""

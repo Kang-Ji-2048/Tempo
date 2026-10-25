@@ -1,0 +1,127 @@
+{
+  "reply_text": "Your first lesson is **Backhand Impact Foundation**, which is currently active in your intermediate tennis plan. You'll focus on using your non-dominant hand on the throat for the unit turn, stepping across with your front foot, and meeting the ball well in front of your lead hip with a firm wrist. To build that muscle memory, your starting drill is the **Impact Point Wall Press** (6 reps of 5-second holds focusing on a firm wrist and straight elbow lock).",
+  "speak_text": "Your first lesson is Backhand Impact Foundation, which is currently active in your intermediate tennis plan. You'll focus on using your non-dominant hand on the throat for the unit turn, stepping across with your front foot, and meeting the ball well in front of your lead hip with a firm wrist. To b",
+  "tool_actions_taken": [],
+  "athlete_memory": {
+    "user_id": "b0368d9e-df91-4a54-9dd4-9a8e85727ce3",
+    "assigned_drills": [],
+    "chat_history": [
+      {
+        "user": "What's my first lesson?",
+        "coach": "Your first lesson is **Backhand Impact Foundation**, which is currently active in your intermediate tennis plan. You'll focus on using your non-dominant hand on the throat for the unit turn, stepping across with your front foot, and meeting the ball well in front of your lead hip with a firm wrist. To build that muscle memory, your starting drill is the **Impact Point Wall Press** (6 reps of 5-second holds focusing on a firm wrist and straight elbow lock).",
+        "channel": "app",
+        "session_id": null,
+        "tools": [],
+        "at": "2026-10-25T01:27:21.152838+00:00"
+      }
+    ],
+    "created_at": "2026-10-25T01:26:41.075611+00:00",
+    "curriculum_nodes": [
+      {
+        "id": "tennis_01_backhand_impact_foundation",
+        "title": "Backhand Impact Foundation",
+        "status": "active",
+        "youtube_url": "https://www.youtube.com/results?search_query=Tennis+Backhand+Impact+Foundation+intermediate",
+        "tips": [
+          "Use your non-dominant hand on the racquet throat to initiate the unit turn.",
+          "Step across with your front foot and freeze your posture at the contact point.",
+          "Keep your wrist firm and meet the ball well in front of your lead hip."
+        ],
+        "drill_spec": {
+          "drill_id": "drill_backhand_wall_freeze",
+          "title": "Impact Point Wall Press",
+          "instruction": "Place racket against a wall at ideal contact height, holding straight-arm posture for 5 seconds.",
+          "target_reps": 6,
+          "focus_cue": "Firm wrist, straight elbow lock"
+        }
+      },
+      {
+        "id": "tennis_02_forehand_spacing_extension",
+        "title": "Forehand Spacing & Extension",
+        "status": "locked",
+        "youtube_url": "https://www.youtube.com/results?search_query=Tennis+Forehand+Spacing+%26+Extension+intermediate",
+        "tips": [
+          "Create space from the ball by using your off-hand as a distance finder.",
+          "Swing low-to-high and fully extend through the contact zone before wrapping the finish.",
+          "Transfer your weight onto your front foot just before making contact."
+        ],
+        "drill_spec": {
+          "drill_id": "drill_drop_feed_extension",
+          "title": "Self-Drop Extension Drill",
+          "instruction": "Drop ball 2 feet in front; step forward and drive through contact with relaxed elbow extension.",
+          "target_reps": 10,
+          "focus_cue": "Extend through the hitting zone"
+        }
+      },
+      {
+        "id": "tennis_03_one_handed_backhand_drive",
+        "title": "One-Handed Backhand Drive",
+        "status": "locked",
+        "youtube_url": "https://www.youtube.com/results?search_query=Tennis+One-Handed+Backhand+Drive+intermediate",
+        "tips": [
+          "Drop the racquet head below the ball prior to starting your forward swing.",
+          "Spread your chest open at the finish by pulling your non-dominant arm backward for counterbalance.",
+          "Stay down through the shot and avoid lifting your head until the ball crosses the net."
+        ],
+        "drill_spec": {
+          "drill_id": "drill_backhand_wall_freeze",
+          "title": "Impact Point Wall Press",
+          "instruction": "Place racket against a wall at ideal contact height, holding straight-arm posture for 5 seconds.",
+          "target_reps": 6,
+          "focus_cue": "Firm wrist, straight elbow lock"
+        }
+      },
+      {
+        "id": "tennis_04_baseline_wing_transitions",
+        "title": "Baseline Wing Transitions",
+        "status": "locked",
+        "youtube_url": "https://www.youtube.com/results?search_query=Tennis+Baseline+Wing+Transitions+intermediate",
+        "tips": [
+          "Use your non-dominant hand on the racquet throat during recovery to quickly change grips.",
+          "Execute a crisp split-step just as your hitting partner prepares to strike the ball.",
+          "Maintain a consistent rally tempo by aiming three feet above the net cord on both wings."
+        ],
+        "drill_spec": null
+      },
+      {
+        "id": "tennis_05_social_match_play_patterns",
+        "title": "Social Match Play Patterns",
+        "status": "locked",
+        "youtube_url": "https://www.youtube.com/results?search_query=Tennis+Social+Match+Play+Patterns+intermediate",
+        "tips": [
+          "Direct your one-handed backhand deep cross-court to stay in high-percentage rallies.",
+          "Look for short balls in the middle of the court to attack with your modern forehand.",
+          "Focus on smooth footwork and high net clearance during friendly practice sets."
+        ],
+        "drill_spec": null
+      }
+    ],
+    "focus_note": null,
+    "intensity": "regular",
+    "last_completed_node": null,
+    "level": "intermediate",
+    "motivation_why": "social_match_play",
+    "phone_number": null,
+    "recent_flaws": [],
+    "reminder_schedule": {
+      "days_of_week": [
+        "Monday",
+        "Wednesday",
+        "Saturday"
+      ],
+      "time_utc": "18:00",
+      "day_times": {},
+      "preferred_channel": "whatsapp",
+      "priming_lead_minutes": 30
+    },
+    "skill_focus": "one_hand_backhand",
+    "sport": "tennis",
+    "updated_at": "2026-10-25T01:27:21.152879+00:00"
+  },
+  "active_widgets": [],
+  "llm_source": "gemini",
+  "llm_model": "gemini-4-argon",
+  "latency_ms": 24355,
+  "audio_cue_text": "Your first lesson is Backhand Impact Foundation, which is currently active in your intermediate tennis plan. You'll focus on using your non-dominant hand on the throat for the unit turn, stepping across with your front foot, and meeting the ball well in front of your lead hip with a firm wrist. To b",
+  "dynamic_widgets": []
+}

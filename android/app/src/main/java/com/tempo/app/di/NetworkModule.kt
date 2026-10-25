@@ -29,6 +29,8 @@ object NetworkModule {
         ignoreUnknownKeys = true
         isLenient = true
         encodeDefaults = true
+        // A JSON null for a non-null Kotlin field falls back to its default instead of failing a 200.
+        coerceInputValues = true
         prettyPrint = false
     }
 

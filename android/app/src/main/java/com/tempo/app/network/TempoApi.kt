@@ -57,7 +57,9 @@ interface TempoApi {
     suspend fun getSports(): List<com.tempo.app.network.models.SportDto>
 
     @POST("api/v1/profile")
-    suspend fun updateProfile(@Body profile: com.tempo.app.network.models.ProfilePayloadDto): Map<String, String>
+    suspend fun updateProfile(
+        @Body profile: com.tempo.app.network.models.ProfilePayloadDto
+    ): com.tempo.app.network.models.ProfileUpdateResponseDto
 
     @GET("api/v1/profile")
     suspend fun getProfile(): com.tempo.app.network.models.UserProfileDto

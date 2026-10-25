@@ -69,7 +69,7 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun login(onSuccess: (hasSport: Boolean) -> Unit) {
+    fun login(onSuccess: (hasSport: Boolean, needsOnboarding: Boolean) -> Unit) {
         val email = _uiState.value.email.trim()
         val password = _uiState.value.password
         if (email.isBlank() || password.isBlank()) {
@@ -85,8 +85,9 @@ class AuthViewModel @Inject constructor(
                     val profileRes = authRepository.getMe()
                     val hasSport = (profileRes as? NetworkResult.Success<*>)?.data is com.tempo.app.network.models.UserProfileDto &&
                             (profileRes.data as com.tempo.app.network.models.UserProfileDto).sport.isNotBlank()
+                    val needsOnboarding = hasSport && !authRepository.isOnboardingComplete()
                     _uiState.update { it.copy(isLoading = false) }
-                    onSuccess(hasSport)
+                    onSuccess(hasSport, needsOnboarding)
                 }
                 is NetworkResult.Error -> {
                     _uiState.update {

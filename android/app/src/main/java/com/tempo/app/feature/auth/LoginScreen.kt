@@ -171,15 +171,19 @@ fun LoginScreen(
                     TempoErrorCard(
                         errorMessage = state.errorMessage ?: "",
                         errorDetail = state.errorDetail,
-                        onRetry = { viewModel.login(onSuccess = {}) }
+                        onRetry = { viewModel.login(onSuccess = { _, _ -> }) }
                     )
                 }
 
                 // Sign In Button
                 Button(
                     onClick = {
-                        viewModel.login { hasSport ->
-                            val dest = if (hasSport) Screen.Home.route else Screen.SportSelection.route
+                        viewModel.login { hasSport, needsOnboarding ->
+                            val dest = when {
+                                !hasSport -> Screen.SportSelection.route
+                                needsOnboarding -> Screen.Onboarding.route
+                                else -> Screen.Home.route
+                            }
                             navController.navigate(dest) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }

@@ -17,6 +17,8 @@ interface AuthRepository {
     suspend fun register(email: String, password: String, displayName: String): NetworkResult<AuthResponseDto>
     suspend fun login(email: String, password: String): NetworkResult<AuthResponseDto>
     suspend fun getMe(): NetworkResult<UserProfileDto>
+    /** Whether athlete_memory already has a plan and schedule (onboarding finished). */
+    suspend fun isOnboardingComplete(): Boolean
     suspend fun logout(): NetworkResult<Unit>
     /** Wipes identity prefs, cached config and all Room rows so the app starts fresh. */
     suspend fun clearLocalState()
@@ -85,6 +87,12 @@ class AuthRepositoryImpl @Inject constructor(
             val code = (e as? HttpException)?.code()
             NetworkResult.Error(exception = e, code = code, message = e.message)
         }
+    }
+
+    override suspend fun isOnboardingComplete(): Boolean = try {
+        tempoApi.getCoachMemory().onboardingComplete
+    } catch (e: Exception) {
+        true // never trap sign-in on a failed check; Home still loads from memory
     }
 
     override suspend fun logout(): NetworkResult<Unit> {

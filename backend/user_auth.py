@@ -14,10 +14,11 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 try:
-    from . import auth, db_mongo
+    from . import auth, db_mongo, sports_config
 except ImportError:
     import auth
     import db_mongo
+    import sports_config
 
 logger = logging.getLogger("tempo.auth")
 
@@ -242,4 +243,22 @@ def update_profile(req: ProfilePayload, request: Request) -> Dict[str, Any]:
         if not found:
             _USERS_MEMORY[user_id] = {"user_id": user_id, **update_data}
 
+    _sync_athlete_memory(user_id, req.sport, req.skill)
     return {"status": "profile_updated", "user_id": user_id, **update_data}
+
+
+def _sync_athlete_memory(user_id: str, sport: str, skill: Optional[str]) -> None:
+    """Mirror the picked sport/skill into athlete_memory, which onboarding, Thea and Home read."""
+    sport_def = sports_config.get_sport(sport)
+    if sport_def is None:
+        return
+    chosen = next((s for s in sport_def.skills if s.id == skill), None)
+    focus = chosen or next((s for s in sport_def.skills if s.analysis_ready), sport_def.skills[0] if sport_def.skills else None)
+    memory = db_mongo.get_athlete_memory(user_id)
+    updates: Dict[str, Any] = {"sport": sport_def.id, "skill_focus": focus.id if focus else None}
+    if memory.get("sport") not in (None, sport_def.id):
+        updates["recent_flaws"] = []
+    try:
+        db_mongo.update_athlete_memory(user_id, updates)
+    except Exception:
+        logger.warning("Could not sync sport to athlete_memory for %s", user_id, exc_info=True)

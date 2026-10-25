@@ -1,0 +1,39 @@
+{
+  "step_id": "level_q1",
+  "progress": 0.2,
+  "coach_message": "Tennis, great. Two quick questions so I can pitch your plan at the right level.",
+  "widget": {
+    "widget_type": "ConceptQuizWidget",
+    "id": "level_q1",
+    "question": "Where is the ideal forehand contact point?",
+    "options": [
+      "Beside your back hip",
+      "Out in front of your lead hip, with space from your body",
+      "Directly above your head",
+      "Tight to your chest with a bent elbow"
+    ],
+    "correct_index": 1,
+    "explanation": "Contact in front with space lets the kinetic chain transfer into the ball."
+  },
+  "is_completed": false,
+  "user_profile": null,
+  "athlete_memory": {
+    "user_id": "b0368d9e-df91-4a54-9dd4-9a8e85727ce3",
+    "assigned_drills": [],
+    "chat_history": [],
+    "created_at": "2026-10-25T01:26:41.075611+00:00",
+    "curriculum_nodes": [],
+    "focus_note": null,
+    "intensity": null,
+    "last_completed_node": null,
+    "level": null,
+    "motivation_why": null,
+    "phone_number": null,
+    "recent_flaws": [],
+    "reminder_schedule": null,
+    "skill_focus": "one_hand_backhand",
+    "sport": "tennis",
+    "updated_at": "2026-10-25T01:26:43.128971+00:00"
+  },
+  "llm_source": null
+}

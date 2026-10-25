@@ -645,11 +645,14 @@ class MockTempoApi @Inject constructor(
         )
     }
 
-    override suspend fun updateProfile(profile: com.tempo.app.network.models.ProfilePayloadDto): Map<String, String> {
+    override suspend fun updateProfile(
+        profile: com.tempo.app.network.models.ProfilePayloadDto
+    ): com.tempo.app.network.models.ProfileUpdateResponseDto {
         delay(150)
         identity.sport = profile.sport
         identity.skill = profile.skill
-        return mapOf("status" to "profile_updated", "user_id" to currentUserId)
+        return com.tempo.app.network.models.ProfileUpdateResponseDto(
+            status = "profile_updated", userId = currentUserId, sport = profile.sport, skill = profile.skill)
     }
 
     override suspend fun getProfile(): com.tempo.app.network.models.UserProfileDto {

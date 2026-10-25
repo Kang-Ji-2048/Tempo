@@ -1,8 +1,38 @@
 package com.tempo.app.network.models
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+
+/**
+ * Decodes a field the backend sends as a string, a list of strings, or null (e.g. `injuries`: `/auth/me`
+ * stores `[]`, onboarding sends `"none"`) into one display string, instead of failing the whole response.
+ */
+object LenientStringSerializer : KSerializer<String> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("LenientString", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): String {
+        val element = (decoder as? JsonDecoder)?.decodeJsonElement() ?: return decoder.decodeString()
+        return when (element) {
+            is JsonArray -> element.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.joinToString(", ").ifBlank { "none" }
+            is JsonPrimitive -> element.contentOrNull ?: "none"
+            else -> "none"
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: String) = encoder.encodeString(value)
+}
 
 @Serializable
 data class OnboardingStepRequestDto(
@@ -11,14 +41,17 @@ data class OnboardingStepRequestDto(
     val answers: Map<String, String> = emptyMap()
 )
 
+/** `/auth/me`, `/profile` and onboarding's `user_profile`. Every field has a default: a fresh account has none. */
 @Serializable
 data class UserProfileDto(
-    @SerialName("user_id") val userId: String = "user_1",
-    val sport: String = "badminton",
+    @SerialName("user_id") val userId: String = "",
+    /** Blank until the athlete picks a sport (login uses this to decide whether to show sport selection). */
+    val sport: String = "",
+    val skill: String? = null,
     val level: String = "intermediate",
-    val goal: String = "overhead_power",
-    val playstyle: String = "aggressive",
-    val injuries: String = "none",
+    val goal: String = "technique_refinement",
+    val playstyle: String = "regular",
+    @Serializable(with = LenientStringSerializer::class) val injuries: String = "none",
     @SerialName("target_archetype") val targetArchetype: String = "Viktor Axelsen",
     @SerialName("calibration_completed") val calibrationCompleted: Boolean = true
 )
@@ -63,4 +96,19 @@ data class WhatsAppLinkResponseDto(
     @SerialName("phone_number") val phoneNumber: String,
     @SerialName("prefill_text") val prefillText: String = "Hi Thea!",
     @SerialName("wa_link") val waLink: String? = null
+)
+
+/** `POST /api/v1/profile` echo. All optional: a 200 must never fail to decode. */
+@Serializable
+data class ProfileUpdateResponseDto(
+    val status: String? = null,
+    @SerialName("user_id") val userId: String? = null,
+    val sport: String? = null,
+    val skill: String? = null,
+    val level: String? = null,
+    val goal: String? = null,
+    val playstyle: String? = null,
+    @Serializable(with = LenientStringSerializer::class) val injuries: String = "none",
+    @SerialName("reference_player") val referencePlayer: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
 )
