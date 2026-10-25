@@ -78,6 +78,7 @@ fun SduiDebugScreen(
             }
             items(state.items, key = { it.key }) { item ->
                 WidgetRenderer(
+                    showUnknown = true,
                     widget = item.widget,
                     onAction = viewModel::onAction,
                     modifier = Modifier.animateItem(),

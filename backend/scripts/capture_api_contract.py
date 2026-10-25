@@ -63,6 +63,10 @@ def main() -> int:
 
     memory = save("coach_memory", requests.get(f"{BASE}/api/v1/coach/memory", headers=h, timeout=15))
     assert memory["athlete_memory"]["skill_focus"] == "one_hand_backhand", "picked skill was not kept"
+    save("coach_memory_version", requests.get(f"{BASE}/api/v1/coach/memory/version", headers=h, timeout=15))
+    save("coach_brief", requests.get(f"{BASE}/api/v1/coach/brief/me", headers=h, timeout=30))
+    save("coach_courts", requests.get(f"{BASE}/api/v1/coach/courts", headers=h, timeout=30,
+                                      params={"lat": 51.5265, "lng": -0.0982}))
     save("coach_converse", requests.post(f"{BASE}/api/v1/coach/converse", headers=h, timeout=120,
                                          json={"message": "What's my first lesson?", "channel": "app"}))
     print(f"Captured contract fixtures for {reg['user_id']} into {OUT.relative_to(ROOT)}")

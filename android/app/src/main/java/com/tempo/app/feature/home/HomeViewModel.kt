@@ -131,6 +131,27 @@ class HomeViewModel @Inject constructor(
 
     init {
         refreshFromMemory()
+        watchMemory()
+    }
+
+    /**
+     * WhatsApp, Gemini, Live and this app all edit the same athlete_memory. Poll its cheap version
+     * stamp and re-render Home when another channel changed it.
+     */
+    private fun watchMemory() {
+        viewModelScope.launch {
+            var seen: String? = null
+            while (true) {
+                kotlinx.coroutines.delay(MEMORY_POLL_MS)
+                val version = try {
+                    tempoApi.getMemoryVersion().updatedAt
+                } catch (_: Exception) {
+                    continue
+                }
+                if (seen != null && version != null && version != seen) refreshFromMemory()
+                seen = version ?: seen
+            }
+        }
     }
 
     /**
@@ -276,7 +297,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun openWhatsAppCadence(context: Context, customBrief: String? = null) {
-        val theaNumber = BuildConfig.THEA_NUMBER.ifBlank { "4477985791437" }
+        val theaNumber = BuildConfig.THEA_NUMBER.ifBlank { "447985791437" }
         val brief = customBrief ?: "Hey Coach Thea! I'm reviewing my practice session debrief and setting my upcoming training cadence."
         val url = "https://wa.me/$theaNumber?text=" + Uri.encode(brief)
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
@@ -352,5 +373,9 @@ class HomeViewModel @Inject constructor(
     fun setUseMockApi(useMock: Boolean) {
         prefs.edit().putBoolean("use_mock_api", useMock).apply()
         _debugState.update { it.copy(isMockMode = useMock) }
+    }
+
+    private companion object {
+        const val MEMORY_POLL_MS = 5_000L
     }
 }

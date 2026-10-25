@@ -116,6 +116,19 @@ fun TempoNavGraph(
         composable(Screen.Live.route) {
             LiveScreen(navController = navController)
         }
+        // Live mode bound to a lesson node / drill (from Lesson, Home drill cards or Analysis remedial drills).
+        composable(
+            route = LessonRoutes.LIVE_PATTERN,
+            arguments = listOf("node_id", "drill_id").map { name ->
+                navArgument(name) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            }
+        ) {
+            LiveScreen(navController = navController)
+        }
         composable(
             route = Screen.Schedule.route,
             deepLinks = listOf(

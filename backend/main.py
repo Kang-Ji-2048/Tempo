@@ -59,9 +59,11 @@ if __package__:
         claim_saint_action,
         start_athlete_memory_watcher,
         stop_athlete_memory_watcher,
+        get_athlete_memory,
     )
     from .etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
     from .android_api import create_android_router
+    from . import kinematics_engine
 else:
     from auth import install_auth, own, principal, event_visible, authenticate
     from telemetry_time import require_recent
@@ -87,9 +89,11 @@ else:
         claim_saint_action,
         start_athlete_memory_watcher,
         stop_athlete_memory_watcher,
+        get_athlete_memory,
     )
     from etl_pose import extract_pose_from_video, get_pose_runtime_status, parse_apple_watch_metrics as _parse_watch_metrics
     from android_api import create_android_router
+    import kinematics_engine
 
 
 def parse_apple_watch_metrics(*args, **kwargs):
@@ -257,7 +261,11 @@ async def analyze_badminton_pipeline(
                 watch_raw_payload = watch_bytes
 
         # Step 1: ETL Pose & Apple Watch Biometrics (Kong)
-        pose_result = await run_in_threadpool(extract_pose_from_video, temp_video_path or "")
+        # Segment reps against the athlete's own sport and skill focus (any stroke, either hand).
+        athlete = await run_in_threadpool(get_athlete_memory, user_name)
+        target_stroke = kinematics_engine.stroke_for_skill(athlete.get("skill_focus"))
+        pose_result = await run_in_threadpool(extract_pose_from_video, temp_video_path or "",
+                                              athlete.get("sport") or sport, target_stroke)
         demo_mode = os.environ.get("TEMPO_DEMO_MODE", "false").lower() == "true"
         if pose_result["status"] in {"fallback_no_video", "fallback_unreadable_video"} and not demo_mode:
             raise HTTPException(status_code=422, detail={
@@ -335,7 +343,8 @@ async def analyze_badminton_pipeline(
             video_path=temp_video_path,
             partner_match=partner_match,
             pose_meta={k: pose_result.get(k) for k in (
-                "status", "overhead_contact_detected", "contact_selection", "valid_pose_frames", "warnings")},
+                "status", "overhead_contact_detected", "contact_selection", "valid_pose_frames", "warnings",
+                "handedness", "rep_analysis")},
         )
 
         # Dispatch Saint webhook if configured

@@ -119,6 +119,19 @@ class AnalysisViewModel @Inject constructor(
         }
     }
 
+    /** Never surface raw server JSON: unwrap {"message": ...} and fall back to a coaching instruction. */
+    private fun humanError(raw: String?): String {
+        val text = raw?.trim().orEmpty()
+        val message = if (text.startsWith("{")) {
+            runCatching {
+                (kotlinx.serialization.json.Json.parseToJsonElement(text) as? JsonObject)
+                    ?.get("message")?.let { (it as? JsonPrimitive)?.contentOrNull }
+            }.getOrNull()
+        } else text
+        return message?.takeIf { it.isNotBlank() }
+            ?: "Thea couldn't analyse this clip. Record again side-on, about 3 m back, with your full body in frame."
+    }
+
     private fun fail(message: String) {
         _uiState.update { it.copy(step = AnalysisStep.FAILED, statusCopy = "Session needs attention",
             errorMessage = message, isPolling = false) }
@@ -201,7 +214,7 @@ class AnalysisViewModel @Inject constructor(
                                 }
                                 "FAILED" -> {
                                     sessionDao.updateStatus(sessionId, "FAILED")
-                                    fail(record.errorMessage ?: "Analysis failed. Record a new clip.")
+                                    fail(humanError(record.errorMessage))
                                     return@launch
                                 }
                                 else -> { fail("Unknown session status: ${record.status}"); return@launch }

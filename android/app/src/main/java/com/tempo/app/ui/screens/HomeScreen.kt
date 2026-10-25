@@ -81,6 +81,7 @@ import com.tempo.app.feature.home.TheaMessage
 import com.tempo.app.feature.home.TheaSender
 import com.tempo.app.feature.sdui.model.PathProgressWidget
 import com.tempo.app.feature.lesson.LessonRoutes
+import com.tempo.app.feature.thea.ContinueWithTheaButton
 import com.tempo.app.feature.voice.VoiceMicButton
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
@@ -122,6 +123,9 @@ fun HomeScreen(
         )
     }
     var inputText by remember { mutableStateOf("") }
+    // Diagnostics stay hidden: tap the studio title five times to reveal them in the account sheet.
+    var titleTaps by remember { mutableStateOf(0) }
+    var diagnosticsUnlocked by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     val sportDisplay = homeHeader?.sportDisplay
@@ -146,7 +150,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "SETTINGS & SYSTEM STATUS",
+                    text = if (diagnosticsUnlocked) "ACCOUNT & DIAGNOSTICS" else "ACCOUNT",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = AccentNeonVolt
                 )
@@ -167,17 +171,19 @@ fun HomeScreen(
                             Text(sportDisplay, style = MaterialTheme.typography.bodySmall, color = AccentNeonVolt, fontWeight = FontWeight.Bold)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("AI Engine:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
-                            Text("Gemini 4 Argon (Saint Runtime)", style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite)
+                            Text("Coach:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text("Thea · Gemini 4 Argon", style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite)
                         }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Network:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
-                            Text(debugState.healthStatus, style = MaterialTheme.typography.bodySmall, color = AccentNeonVolt)
+                        if (diagnosticsUnlocked) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Network:", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                                Text(debugState.healthStatus, style = MaterialTheme.typography.bodySmall, color = AccentNeonVolt)
+                            }
                         }
                     }
                 }
 
-                Button(
+                if (diagnosticsUnlocked) Button(
                     onClick = { viewModel.testConnection() },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !debugState.isCheckingConnection,
@@ -269,6 +275,14 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Conversational Studio",
+                            modifier = Modifier.clickable {
+                                titleTaps += 1
+                                if (titleTaps >= 5) {
+                                    titleTaps = 0
+                                    diagnosticsUnlocked = true
+                                    showDebugSheet = true
+                                }
+                            },
                             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
                             color = TextPrimaryWhite
                         )
@@ -461,6 +475,10 @@ fun HomeScreen(
                 }
             }
 
+            item(key = "whatsapp_continue") {
+                ContinueWithTheaButton()
+            }
+
             // Same coach, same memory, over WhatsApp (Saint).
             item(key = "whatsapp_link") {
                 OutlinedButton(
@@ -591,7 +609,9 @@ fun HomeScreen(
                 ) { widget ->
                     WidgetRenderer(
                         widget = widget,
-                        onAction = { action -> viewModel.onWidgetAction(action) }
+                        onAction = { action -> viewModel.onWidgetAction(action) },
+                        onDrillLive = { drill -> navController.navigate(LessonRoutes.live(null, drill.id)) },
+                        onDrillUpload = { navController.navigate(Screen.Capture.route) }
                     )
                 }
             }

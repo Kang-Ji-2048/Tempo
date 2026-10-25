@@ -13,7 +13,12 @@
       {
         "id": "jump_smash",
         "name": "Jump Smash",
-        "analysis_ready": false
+        "analysis_ready": true
+      },
+      {
+        "id": "net_lunge_defense",
+        "name": "Net Lunge Defense",
+        "analysis_ready": true
       }
     ]
   },
@@ -31,6 +36,16 @@
       {
         "id": "one_hand_backhand",
         "name": "One-Handed Backhand",
+        "analysis_ready": true
+      },
+      {
+        "id": "two_hand_backhand",
+        "name": "Two-Handed Backhand",
+        "analysis_ready": true
+      },
+      {
+        "id": "first_serve",
+        "name": "First Serve",
         "analysis_ready": true
       }
     ]

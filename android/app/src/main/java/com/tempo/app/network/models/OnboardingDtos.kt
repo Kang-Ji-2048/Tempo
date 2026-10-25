@@ -112,3 +112,41 @@ data class ProfileUpdateResponseDto(
     @SerialName("reference_player") val referencePlayer: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
+
+/** `GET /api/v1/coach/brief/me`: compact Tempo context for the WhatsApp hand-off to Thea. */
+@Serializable
+data class CoachBriefDto(
+    @SerialName("brief_text") val briefText: String = "",
+    @SerialName("whatsapp_link") val whatsappLink: String? = null,
+    @SerialName("thea_number") val theaNumber: String? = null
+)
+
+/** `GET /api/v1/coach/memory/version`: poll this; refetch memory only when it changes. */
+@Serializable
+data class MemoryVersionDto(
+    @SerialName("updated_at") val updatedAt: String? = null,
+    @SerialName("chat_turns") val chatTurns: Int = 0
+)
+
+@Serializable
+data class CourtDto(
+    @SerialName("facility_id") val facilityId: String = "",
+    val name: String = "",
+    val postcode: String? = null,
+    val sports: List<String> = emptyList(),
+    val indoor: Boolean? = null,
+    val outdoor: Boolean? = null,
+    @SerialName("distance_km") val distanceKm: Double = 0.0
+)
+
+@Serializable
+data class PlayCallDto(val decision: String = "", val venue: String? = null, val reason: String = "")
+
+/** `GET /api/v1/coach/courts`: $nearSphere courts plus a play / move indoors / postpone call. */
+@Serializable
+data class CourtsResponseDto(
+    val courts: List<CourtDto> = emptyList(),
+    @SerialName("play_call") val playCall: PlayCallDto? = null,
+    @SerialName("booking_note") val bookingNote: String? = null,
+    @SerialName("search_method") val searchMethod: String? = null
+)

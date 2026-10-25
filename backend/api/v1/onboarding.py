@@ -390,6 +390,14 @@ class CoachMemoryResponse(BaseModel):
     onboarding_complete: bool
 
 
+@router.get("/coach/memory/version")
+def get_coach_memory_version(identity: Dict[str, Any] = Depends(coach_converse._identity)) -> Dict[str, Any]:
+    """Cheap change check for clients: poll this, and refetch /coach/memory only when updated_at moves
+    (WhatsApp, Gemini, Live and the app all write the same document)."""
+    memory = db_mongo.get_athlete_memory(identity["user_id"])
+    return {"updated_at": memory.get("updated_at"), "chat_turns": len(memory.get("chat_history") or [])}
+
+
 @router.get("/coach/memory", response_model=CoachMemoryResponse)
 def get_coach_memory(identity: Dict[str, Any] = Depends(coach_converse._identity)) -> CoachMemoryResponse:
     memory = db_mongo.get_athlete_memory(identity["user_id"])

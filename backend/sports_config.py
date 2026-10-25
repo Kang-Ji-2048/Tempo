@@ -103,10 +103,46 @@ SPORTS_CATALOG: Dict[str, SportDefinition] = {
             SkillDefinition(
                 id="jump_smash",
                 name="Jump Smash",
-                analysis_ready=False,
+                analysis_ready=True,
                 phases=["Approach", "Takeoff", "Peak Apex Impact", "Landing"],
-                metrics=["vertical_jump_height", "right_elbow_contact_deg"],
-                threshold_pass_deg=170.0
+                metrics=["jump_height_bh", "attack_angle_deg", "pronation_proxy_deg_s"],
+                threshold_pass_deg=170.0,
+                common_faults=[
+                    FaultDefinition(id="flat_attack", name="Flat Attack Angle",
+                                    description="Contact behind the head sends the smash flat instead of steeply down.",
+                                    cue_id="cue_hit_in_front", drill_ids=["drill_split_jump_shadow"]),
+                ],
+                drills=[
+                    DrillDefinition(
+                        id="drill_split_jump_shadow",
+                        title="Split-Jump Shadow Smash",
+                        instruction="From a split-step, jump off both feet, contact in front of the hitting shoulder at the top of the jump and land in balance.",
+                        focus_cue="Jump, hit in front, fold forward",
+                        target_reps=8
+                    )
+                ]
+            ),
+            SkillDefinition(
+                id="net_lunge_defense",
+                name="Net Lunge Defense",
+                analysis_ready=True,
+                phases=["Split-Step", "Lunge", "Deepest Point", "Push-Back Recovery"],
+                metrics=["lead_knee_deg", "hip_ratio", "trunk_lean_deg", "recovery_ms"],
+                threshold_pass_deg=135.0,
+                common_faults=[
+                    FaultDefinition(id="collapsed_lunge", name="Collapsed Chest on Lunge",
+                                    description="Trunk leans past 25 degrees so the head drops and recovery slows.",
+                                    cue_id="cue_chest_up", drill_ids=["drill_lunge_recover"]),
+                ],
+                drills=[
+                    DrillDefinition(
+                        id="drill_lunge_recover",
+                        title="Front-Court Lunge & Recover",
+                        instruction="Lunge to the net with the racket-side leg to a 100-135 degree knee, chest up, then push back to base within a second.",
+                        focus_cue="Chest up, push back fast",
+                        target_reps=10
+                    )
+                ]
             )
         ]
     ),
@@ -165,6 +201,50 @@ SPORTS_CATALOG: Dict[str, SportDefinition] = {
                         instruction="Place racket against a wall at ideal contact height, holding straight-arm posture for 5 seconds.",
                         focus_cue="Firm wrist, straight elbow lock",
                         target_reps=6
+                    )
+                ]
+            ),
+            SkillDefinition(
+                id="two_hand_backhand",
+                name="Two-Handed Backhand",
+                analysis_ready=True,
+                phases=["Unit Turn", "Loading", "Contact", "Balanced Finish"],
+                metrics=["prep_coil_deg", "impact_elbow_deg", "trunk_lean_deg"],
+                threshold_pass_deg=140.0,
+                common_faults=[
+                    FaultDefinition(id="falling_back", name="Falling Back at Finish",
+                                    description="Trunk tips backwards after contact, losing depth and balance.",
+                                    cue_id="cue_stay_tall", drill_ids=["drill_two_hand_shadow"]),
+                ],
+                drills=[
+                    DrillDefinition(
+                        id="drill_two_hand_shadow",
+                        title="Shoulder-Turn Shadow Backhand",
+                        instruction="Turn the back shoulder to the net, swing both hands through contact in front and hold a tall finish for 2 seconds.",
+                        focus_cue="Turn, swing through, stay tall",
+                        target_reps=10
+                    )
+                ]
+            ),
+            SkillDefinition(
+                id="first_serve",
+                name="First Serve",
+                analysis_ready=True,
+                phases=["Stance", "Trophy Pose", "Contact Reach", "Follow-Through"],
+                metrics=["loading_knee_deg", "toss_arm_vertical_deg", "reach_ratio", "pronation_proxy_deg_s"],
+                threshold_pass_deg=165.0,
+                common_faults=[
+                    FaultDefinition(id="no_leg_drive", name="Straight Legs in Trophy",
+                                    description="Knees stay straight in the trophy pose, so the serve is all arm.",
+                                    cue_id="cue_load_legs", drill_ids=["drill_trophy_hold"]),
+                ],
+                drills=[
+                    DrillDefinition(
+                        id="drill_trophy_hold",
+                        title="Trophy Pose Hold & Reach",
+                        instruction="Toss, freeze 2 seconds in the trophy pose with bent knees and tossing arm straight up, then drive up to full reach.",
+                        focus_cue="Bend, point, reach",
+                        target_reps=8
                     )
                 ]
             )

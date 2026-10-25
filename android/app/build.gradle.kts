@@ -22,7 +22,7 @@ require(localBaseUrl.matches(Regex("https?://[A-Za-z0-9.\\-]+(?::[0-9]+)?/"))) {
     "BASE_URL or tempo.baseUrl must be an HTTP(S) server URL ending in /"
 }
 val localDebugToken = localProperties.getProperty("TEMPO_DEBUG_TOKEN", "")
-val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "")
+val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "447985791437")
 val localUseMockApi = false
 val localUserId = localProperties.getProperty("TEMPO_USER_ID", "user_1")
 

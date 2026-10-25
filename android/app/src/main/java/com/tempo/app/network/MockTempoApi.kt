@@ -220,6 +220,14 @@ class MockTempoApi @Inject constructor(
         return com.tempo.app.network.models.WhatsAppLinkResponseDto(phoneNumber = request.phoneNumber)
     }
 
+    override suspend fun getCoachBrief() = com.tempo.app.network.models.CoachBriefDto(
+        briefText = "Hi Thea [Tempo Sync | Demo]", whatsappLink = null)
+
+    override suspend fun getMemoryVersion() = com.tempo.app.network.models.MemoryVersionDto()
+
+    override suspend fun getNearbyCourts(lat: Double, lng: Double, sport: String?) =
+        com.tempo.app.network.models.CourtsResponseDto()
+
     override suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto {
         delay(150)
         return com.tempo.app.network.models.CoachMemoryResponseDto()

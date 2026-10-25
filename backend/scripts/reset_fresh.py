@@ -61,11 +61,7 @@ def main() -> int:
     status = db_mongo.wait_for_search_index(db, db_mongo.DRILLS_COLLECTION, db_mongo.DRILLS_SEARCH_INDEX_NAME)
     print(f"seeded drills_catalog: {drill_count} drills; search index {action} -> {status}")
 
-    facilities = db[db_mongo.FACILITIES_COLLECTION]
-    facilities.create_index([("location_geojson", GEOSPHERE)], name="location_2dsphere_idx")
-    for fac in db_mongo.SEED_LONDON_FACILITIES:
-        facilities.replace_one({"facility_id": fac["facility_id"]}, {**fac, "city": "London"}, upsert=True)
-    print(f"seeded facilities: {len(db_mongo.SEED_LONDON_FACILITIES)} London courts (2dsphere indexed)")
+    print(f"seeded facilities: {db_mongo.seed_facilities(db)} London courts (2dsphere indexed)")
 
     print(f"reset complete: {db_mongo.DB_NAME}")
     return 0
