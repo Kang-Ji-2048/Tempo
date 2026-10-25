@@ -29,7 +29,7 @@ else:
 
 class Event(saint.StrictModel):
     """The canonical event schema. Add event types here; Saint decides whether to act or ask."""
-    type: Literal['court_slot_opened', 'argon_verdict']
+    type: Literal['court_slot_opened', 'argon_verdict', 'coaching_job', 'coaching_message']
     event_id: str = Field(pattern=r'^[a-f0-9]{32}$')
     user: str
     summary: str = Field(min_length=1, max_length=600)
@@ -100,6 +100,26 @@ def argon_verdict(user: str, verdict: dict) -> Event | None:
                   f"book an indoor {prefs.sport} court tomorrow at {prefs.preferred_time} for 60 minutes",
                   {'verification_status': 'FAIL', 'drill': drill,
                    'right_elbow_contact_deg': verdict.get('right_elbow_contact_deg')})
+
+
+def coaching_job(user: str, job: dict, stage: str, metadata: dict | None = None) -> Event:
+    """An Argon coaching job: staged after analysis, or executed after the player's approval."""
+    summary = str(job.get('proactive_training_notification') or job.get('plain_english_instruction') or stage)[:600]
+    return Event(type='coaching_job', event_id=uuid4().hex, user=user, summary=summary,
+                 data={'event_type': stage, 'saint_agent_job': job, 'metadata': metadata or {}},
+                 occurred_at=saint.now())
+
+
+def coaching_message(user: str, event_type: str, message: str, to: str | None, channel: str,
+                     extra: dict | None = None) -> Event:
+    """A proactive coaching message (cadence nudge or live debrief) for Saint to deliver."""
+    return Event(type='coaching_message', event_id=uuid4().hex, user=user, summary=message[:600],
+                 data={'event_type': event_type, 'message': message, 'to': to, 'channel': channel, **(extra or {})},
+                 occurred_at=saint.now())
+
+
+# Status words older callers store in saint_notifications.
+LEGACY_STATUS = {'sent': 'SENT', 'staged': 'STAGED_LOCALLY', 'failed': 'FAILED'}
 
 
 router = APIRouter(tags=['saint-events'])

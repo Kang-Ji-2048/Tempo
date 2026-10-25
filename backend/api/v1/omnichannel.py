@@ -35,10 +35,10 @@ from starlette.concurrency import run_in_threadpool
 from app.services.saint_cadence import SaintCadenceService
 
 if __package__ == "backend.api.v1":
-    from ... import coach_converse, db_mongo, llm_config, user_auth
+    from ... import coach_converse, db_mongo, llm_config, saint_events, user_auth
     from ...auth import authenticate
 else:
-    import coach_converse, db_mongo, llm_config, user_auth
+    import coach_converse, db_mongo, llm_config, saint_events, user_auth
     from auth import authenticate
 
 logger = logging.getLogger("tempo.omnichannel")
@@ -188,12 +188,6 @@ SAINT_DELIVERIES_COLLECTION = "saint_deliveries"
 SAINT_RECEIPT_PATH = "/api/v1/webhooks/saint-delivery-receipt"
 
 
-def saint_webhook_headers() -> Dict[str, str]:
-    """Headers every Saint dispatch sends, so the receipt endpoint can authenticate it."""
-    secret = os.environ.get("TEMPO_WEBHOOK_SECRET", "").strip()
-    return {"X-Tempo-Webhook-Secret": secret} if secret else {}
-
-
 @router.post("/webhooks/saint-delivery-receipt")
 async def saint_delivery_receipt(request: Request) -> Dict[str, Any]:
     """Record a Saint dispatch. Public to the auth middleware; requires the shared webhook secret."""
@@ -206,14 +200,17 @@ async def saint_delivery_receipt(request: Request) -> Dict[str, Any]:
         raise HTTPException(422, "Expected a JSON Saint payload") from exc
     if not isinstance(payload, dict):
         raise HTTPException(422, "Expected a JSON object")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     receipt = {
         "receipt_id": uuid.uuid4().hex,
         "received_at": datetime.now(timezone.utc).isoformat(),
-        "event_type": payload.get("event_type"),
-        "user_id": payload.get("user_id") or (payload.get("metadata") or {}).get("user_name"),
-        "to": payload.get("to"),
-        "channel": payload.get("channel"),
-        "message": payload.get("message") or (payload.get("saint_agent_job") or {}).get("proactive_training_notification"),
+        # Signed saint_events.Event pushes keep these fields under `data`; older payloads had them on top.
+        "event_type": payload.get("event_type") or data.get("event_type") or payload.get("type"),
+        "user_id": payload.get("user_id") or payload.get("user") or (payload.get("metadata") or {}).get("user_name"),
+        "to": payload.get("to") or data.get("to"),
+        "channel": payload.get("channel") or data.get("channel"),
+        "message": payload.get("message") or data.get("message") or payload.get("summary")
+                   or (payload.get("saint_agent_job") or {}).get("proactive_training_notification"),
         "payload": payload,
     }
     db = db_mongo.get_db()
@@ -270,11 +267,14 @@ def run_cadence(user_id: str, now: Optional[datetime], dispatch: bool) -> Dict[s
         memory, _recent_sessions(user_id), _display_name(user_id), current_time=now)
     message = SaintCadenceService.format_thea_dispatch(payload)
     channel = (memory.get("reminder_schedule") or {}).get("preferred_channel", "whatsapp")
-    result = SaintCadenceService.dispatch_notification(
-        payload, webhook_url=os.environ.get("SAINT_WEBHOOK_URL", "").strip(),
-        extra={"to": memory.get("phone_number"), "channel": channel},
-        headers=saint_webhook_headers()) if dispatch else {
-        "dispatched": False, "status": "PREVIEW", "thea_message": message}
+    if dispatch:
+        outcome = saint_events.push(saint_events.coaching_message(
+            user_id, payload.event_type.value, message, memory.get("phone_number"), channel,
+            {"kind": payload.metadata.get("kind"), "call_to_action": payload.call_to_action}))
+        result = {"dispatched": outcome["status"] == "sent", "status": saint_events.LEGACY_STATUS[outcome["status"]],
+                  "thea_message": message}
+    else:
+        result = {"dispatched": False, "status": "PREVIEW", "thea_message": message}
     db_mongo.queue_saint_notification({
         "user_id": user_id, "type": f"cadence_{payload.metadata.get('kind')}", "event_type": payload.event_type.value,
         "message": message, "channel": channel, "phone_number": memory.get("phone_number"),

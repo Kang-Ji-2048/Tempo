@@ -24,12 +24,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 if __package__:
-    from . import argon_analysis, db_mongo, kinematics_engine, sports_config
+    from . import argon_analysis, db_mongo, kinematics_engine, saint_events, sports_config
     from .api.v1 import onboarding as onboarding_api
     from .auth import own, principal, authenticate
     from .telemetry_time import require_recent
 else:
-    import argon_analysis, db_mongo, kinematics_engine, sports_config
+    import argon_analysis, db_mongo, kinematics_engine, saint_events, sports_config
     from api.v1 import onboarding as onboarding_api
     from auth import own, principal, authenticate
     from telemetry_time import require_recent
@@ -432,16 +432,15 @@ def _dispatch_live_debrief(user_id: str, memory: dict[str, Any], summary: str, r
         event_type=CadenceEventType.POST_SESSION_DEBRIEF, user_id=user_id, recipient_name='there',
         plain_text_message=summary, call_to_action='Open Tempo to review the set.',
         session_id=record['session_id'], metadata={'kind': 'live_debrief', 'overall_score': record['overall_score']})
-    secret = os.environ.get('TEMPO_WEBHOOK_SECRET', '').strip()
-    result = SaintCadenceService.dispatch_notification(
-        payload, webhook_url=os.environ.get('SAINT_WEBHOOK_URL', '').strip(),
-        extra={'to': memory.get('phone_number'), 'channel': 'whatsapp'},
-        headers={'X-Tempo-Webhook-Secret': secret} if secret else {})
+    message = SaintCadenceService.format_thea_dispatch(payload)
+    outcome = saint_events.push(saint_events.coaching_message(
+        user_id, 'POST_SESSION_DEBRIEF', message, memory.get('phone_number'), 'whatsapp',
+        {'kind': 'live_debrief', 'session_id': record['session_id'], 'overall_score': record['overall_score']}))
     db_mongo.queue_saint_notification({
         'user_id': user_id, 'type': 'post_session_debrief', 'event_type': 'POST_SESSION_DEBRIEF',
-        'session_id': record['session_id'], 'message': SaintCadenceService.format_thea_dispatch(payload),
+        'session_id': record['session_id'], 'message': message,
         'channel': 'whatsapp', 'phone_number': memory.get('phone_number'),
-        'status': result['status'], 'dispatched': result['dispatched']})
+        'status': saint_events.LEGACY_STATUS[outcome['status']], 'dispatched': outcome['status'] == 'sent'})
 
 
 class UserSchedule(BaseModel):

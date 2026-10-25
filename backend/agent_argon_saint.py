@@ -6,7 +6,7 @@ agent_argon_saint.py - Gemini 4 Argon Biomechanical Verification & Saint AI Auto
 - Returns structured JSON: `verification_status`, `biomechanical_diagnosis`, `live_drill_prescription`,
   and `saint_agent_job` (`plain_english_instruction`, `proactive_training_notification`,
   `requires_human_approval: true`, `approval_action_summary`).
-- POSTs `saint_agent_job` to `SAINT_WEBHOOK_URL` if configured.
+- Pushes `saint_agent_job` to Saint as a signed `coaching_job` event if `SAINT_WEBHOOK_URL` is configured.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import os
 import math
 from typing import Any, Dict, Optional
 
-import requests
 from google import genai
 from pydantic import BaseModel, Field
 from typing import Literal
@@ -164,39 +163,22 @@ def dispatch_saint_webhook(
     extra_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    POST `saint_agent_job` to `SAINT_WEBHOOK_URL` if configured in the environment.
+    Push `saint_agent_job` to Saint as a signed `coaching_job` event (see saint_events.Event).
     """
-    webhook_url = os.environ.get("SAINT_WEBHOOK_URL", "").strip()
-    if not webhook_url:
-        return {
-            "webhook_configured": False,
-            "dispatched": False,
-            "event_type": event_type,
-            "detail": "SAINT_WEBHOOK_URL not set; job staged locally awaiting human-in-the-loop approval.",
-        }
-
-    payload = {
+    if __package__:
+        from . import saint_events
+    else:
+        import saint_events
+    metadata = extra_metadata or {}
+    user = str(metadata.get("user_name") or metadata.get("approved_by") or "unknown")
+    outcome = saint_events.push(saint_events.coaching_job(user, saint_agent_job, event_type, metadata))
+    return {
+        "webhook_configured": bool(os.environ.get("SAINT_WEBHOOK_URL", "").strip()),
+        "dispatched": outcome["status"] == "sent",
+        "status_code": outcome.get("status_code"),
         "event_type": event_type,
-        "saint_agent_job": saint_agent_job,
-        "metadata": extra_metadata or {},
+        "detail": outcome.get("detail"),
     }
-    try:
-        secret = os.environ.get("TEMPO_WEBHOOK_SECRET", "").strip()
-        resp = requests.post(webhook_url, json=payload, timeout=6.0,
-                             headers={"X-Tempo-Webhook-Secret": secret} if secret else {})
-        return {
-            "webhook_configured": True,
-            "dispatched": resp.ok,
-            "status_code": resp.status_code,
-            "event_type": event_type,
-        }
-    except Exception as exc:
-        return {
-            "webhook_configured": True,
-            "dispatched": False,
-            "event_type": event_type,
-            "error": str(exc),
-        }
 
 
 def _call_gemini_4_argon(prompt: str, response_schema: Dict[str, Any]) -> Optional[str]:
@@ -270,7 +252,7 @@ def run_argon_and_saint_agent(
        - `live_drill_prescription`
        - `saint_agent_job` (`plain_english_instruction`, `proactive_training_notification`,
          `requires_human_approval: true`, `approval_action_summary`)
-    4. POSTs `saint_agent_job` to `SAINT_WEBHOOK_URL` if configured.
+    4. Returns `saint_agent_job`; callers push it to Saint with `dispatch_saint_webhook`.
     """
     partner_info = partner_match or {
         "name": "Arjun Mehta",
