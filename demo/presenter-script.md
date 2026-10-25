@@ -1,24 +1,24 @@
 # Tempo · three-minute pitch
 
-Title, problem, solution + architecture, Argon, MongoDB, Saint, demo, impact + next steps, then an untimed team/Q&A background.
+Eight timed slides, then the team photo stays up for questions. One dedicated Saint slide.
 
 ## 1. Tempo · 0:00–0:10
 
-Tempo helps amateur racket-sport players turn a practice clip into one clear coaching focus and a plan for their next session.
+Tempo helps amateur racket-sport players know what to practise next: one clear coaching focus and a drill for their next session.
 
-Presenter cue: Introduce Tempo briefly, then move to the player problem.
+Presenter cue: Keep the opening short. The audience and problem are on the next slide.
 
 ## 2. Problem · 0:10–0:30
 
-Tempo is for amateur badminton and tennis players. A video shows the stroke, but it does not tell the player what to work on next. Useful advice still needs a drill, another session and a way to check progress. We connect those steps.
+Amateur players can film their strokes, but turning that footage into better practice is harder. What should I change? How should I practise it? And when will I play again? Tempo connects those questions into a next step the player can use.
 
-Presenter cue: Start here; there is no separate cover. Describe the problem without claiming a market study.
+Presenter cue: Frame this as the problem Tempo is addressing; do not imply a completed customer study. Reveal the three horizontal question blocks with three advances. The fourth advance moves to the solution. Builds are included in this slide’s 20 seconds.
 
 ## 3. Solution and architecture · 0:30–0:55
 
-Our solution is one coaching loop, from a practice clip to the next session. Android captures the clip, FastAPI checks pose and sample freshness, and MongoDB keeps the player history. Gemini returns coaching feedback and drill widgets. The player can then review the next practice action.
+Our solution gives the player one clear correction and a drill for the next session. Behind it, Android captures the clip, FastAPI checks the movement and Watch context, MongoDB keeps the history, and Gemini returns the coaching reply. The result comes back to the same player.
 
-Presenter cue: Use the diagram for the brief solution explanation. Watch samples arrive through the paired iPhone Shortcut route; Safari does not read Health directly.
+Presenter cue: Lead with the player benefit, then point across the diagram once. Highest reach is a contact proxy, Watch context uses actual sample timestamps, and model fallbacks stay labelled.
 
 ## 4. Use of Gemini 4 Argon · 0:55–1:20
 
@@ -34,9 +34,9 @@ Presenter cue: The canonical database is sports_coach_db. Shared player memory a
 
 ## 6. Use of Saint · 1:45–2:10
 
-Saint takes the next action through an approval gate. Ask for an indoor court on Saturday morning, review the exact details, then approve or decline. The backend validates the signed proposal and logs execution once. The venue adapter is mocked today, so no real booking or payment is made.
+With Saint, the player stays in control. You ask for a court, review the details and approve the action you want. Saint then carries out that approved step. In this prototype, the action is a mock booking. No real reservation or payment happens.
 
-Presenter cue: The only dedicated Saint slide. The command prototype is a deterministic planner with a mock adapter, not a verified connection to saint.agent. Do not claim live availability, a booking confirmation or a payment.
+Presenter cue: Technical detail for questions: HMAC signatures protect proposal integrity; proposals expire after 15 minutes; idempotency keys prevent repeated approvals from executing twice. The command prototype has a deterministic planner and mock venue adapter. No hosted Saint connection, real booking or payment is demonstrated.
 
 ## 7. Demo · 2:10–2:40
 
@@ -44,11 +44,13 @@ Here is the demo: capture a short set, open the debrief, then review the next pr
 
 Presenter cue: Allow roughly 15 seconds to show the prepared Android walkthrough or a recording. If unavailable, narrate the steps. Use the same player credential and saved home area; label sample results. The full phone/video/Watch/action flow has not been verified together.
 
+VIDEO: The blank 16:9 area is reserved for a prepared recording. No video is embedded yet.
+
 ## 8. Impact and next steps · 2:40–3:00
 
-The prototype gives a player one clear focus. We have checked twenty command phrases and extracted twenty-five usable frames from a real clip. Next comes a full phone rehearsal, then a player pilot to measure usefulness, followed by a real venue-provider connection.
+Our prototype gives a player one clear focus, with twenty command phrases checked and twenty-five usable frames from a real clip. The pilot will measure what matters to players: whether the feedback is useful, whether drills get completed and whether players return. Real venue integration follows that pilot.
 
-Presenter cue: Prototype metrics, not measured player improvement. The earlier 25-frame crop used synthetic local biometrics and has no ground-truth angle annotations. The 20 phrases test the deterministic parser. The timeline is a planned sequence, not committed dates.
+Presenter cue: The numbers on the left are prototype signals, not measured customer impact. The 20 phrases test a deterministic parser; the earlier 25-frame crop used synthetic local biometrics and has no ground-truth angle validation. Feedback usefulness, drill completion and return sessions are proposed pilot measures, not observed results. Timeline stages are planned, not dated commitments.
 
 ## 9. Questions and team · Q&A background
 

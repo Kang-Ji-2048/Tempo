@@ -9,3 +9,5 @@ Team credits: Sumanth — Gemini 4 Argon; Taha — MongoDB; Kang — Saint AI; Y
 The evidence slide distinguishes the earlier real-video test from the current Android/backend connection and action-parser checks. Saint court actions use a deterministic planner and mock venue adapter. No live booking, payment or verified hosted Saint integration is claimed. The earlier pose-angle estimate has no ground-truth validation.
 
 Static Vercel settings: repository Kang-Ji-2048/Tempo, root directory demo, framework Other, no build command, output directory `.`. Updating these files does not create or update a Vercel deployment. Fonts request Manrope from Google Fonts, with system fallbacks.
+
+Motion: short fades and subtle entry movement on the solution, Argon, MongoDB and Saint slides. These automatic reveals add no clicks. Slide 2 retains its three manual question reveals. Reduced-motion preferences disable animation. Title, Demo, Impact and Q&A content stay still.
