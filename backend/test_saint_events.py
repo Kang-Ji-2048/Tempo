@@ -68,4 +68,23 @@ class SaintEventTests(unittest.TestCase):
   self.assertIn('/command',paths);self.assertIn('/api/v1/saint/actions/decision',paths)
   self.assertNotIn('/api/v1/sessions',paths)
 
+ def test_argon_job_sender_pushes_a_signed_coaching_job(self):
+  import agent_argon_saint as agent
+  with patch.dict(os.environ,{'SAINT_WEBHOOK_URL':'https://saint.example/hook','TEMPO_WEBHOOK_SECRET':'s'*32}),\
+       patch.object(events.requests,'post') as post:
+   post.return_value.ok=True;post.return_value.status_code=202
+   result=agent.dispatch_saint_webhook({'proactive_training_notification':'Re-film side-on.'},'SAINT_JOB_STAGED',{'user_name':'alice'})
+  self.assertTrue(result['dispatched']);self.assertTrue(result['webhook_configured'])
+  body=events.json.loads(post.call_args.kwargs['data'])
+  self.assertEqual((body['type'],body['user'],body['summary'],body['data']['event_type']),('coaching_job','alice','Re-film side-on.','SAINT_JOB_STAGED'))
+ def test_receipt_reads_event_fields(self):
+  from api.v1 import omnichannel
+  event=events.coaching_message('alice','PRE_SESSION_PRIMING','Warm up.','+447700900000','whatsapp')
+  app=FastAPI();app.include_router(omnichannel.router)
+  with patch.dict(os.environ,{'TEMPO_WEBHOOK_SECRET':'s'*32}),patch.object(omnichannel.db_mongo,'get_db',return_value=None),\
+       patch.object(omnichannel.logger,'info') as log:
+   ok=TestClient(app).post('/api/v1/webhooks/saint-delivery-receipt',json=event.model_dump(mode='json'),headers={'X-Tempo-Webhook-Secret':'s'*32})
+  self.assertEqual(ok.status_code,200,ok.text)
+  self.assertEqual(log.call_args.args[2:],('PRE_SESSION_PRIMING','alice','+447700900000'))
+
 if __name__=='__main__':unittest.main()

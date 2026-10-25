@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Keep tests offline: no Atlas, Gemini or Saint calls even if secrets are added later.
+      MONGODB_URI: ""
+      GEMINI_API_KEY: ""
+      GOOGLE_API_KEY: ""
+      SAINT_WEBHOOK_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Backend unit tests
+        run: python -m unittest discover -s backend -p 'test_*.py'
+        env:
+          PYTHONPATH: backend
+      - name: Service tests
+        run: python -m pytest -q tests

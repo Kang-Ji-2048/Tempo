@@ -118,6 +118,12 @@ def _broadcast_sse_event(event_type: str, data: Dict[str, Any]) -> None:
             pass
 
 
+def analysis_skill(sport: str) -> tuple[str, str]:
+    """Default skill for the uploaded sport; unknown sports keep the badminton overhead clear."""
+    skill = sports_config.get_skill(sport, "")
+    return (sports_config.get_sport(sport).id, skill.id) if skill else ("badminton", "overhead_clear")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import logging
@@ -336,10 +342,12 @@ async def analyze_badminton_pipeline(
         )
 
         # Step 3: Gemini 4 Argon Multimodal Verification & Provenance (argon_analysis.py)
+        sport_id, skill_id = analysis_skill(athlete.get("sport") or sport)
         agent_output = await run_biomechanical_analysis(
             user_name=user_name,
-            sport_id="badminton",
-            skill_id="overhead_clear",
+            # The athlete's own sport and skill focus still win inside resolve_skill when set.
+            sport_id=sport_id,
+            skill_id=skill_id,
             pose_data=pose_result["raw_angles"],
             watch_metrics=watch_metrics,
             pro_match=pro_match,
