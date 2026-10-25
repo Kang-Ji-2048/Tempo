@@ -15,7 +15,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import requests
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
@@ -141,6 +141,30 @@ def coaching_message(user: str, event_type: str, message: str, to: str | None, c
                  occurred_at=saint.now())
 
 
+UNDELIVERED = ('staged', 'failed')
+
+
+def pending(user: str, limit: int = 20) -> list[dict]:
+    """Events for `user` that never reached Saint, oldest first. Each is marked `pulled` as it is returned,
+    so Saint sees it once. For a Saint with no inbound URL: it polls this instead of receiving pushes."""
+    db = saint.db_mongo.get_db()
+    if db is not None:
+        try:
+            rows = list(db['saint_event_log'].find({'event.user': user, 'status': {'$in': list(UNDELIVERED)}})
+                        .sort('event.occurred_at', 1).limit(limit))
+        except Exception:
+            raise HTTPException(503, 'Event storage unavailable')
+    else:
+        with saint._LOCK:
+            rows = [dict(r) for k, r in saint._MEMORY.items() if k.startswith('saint_event_log:')
+                    and r['event']['user'] == user and r['status'] in UNDELIVERED]
+        rows = sorted(rows, key=lambda r: r['event']['occurred_at'])[:limit]
+    for row in rows:
+        saint.put_record('saint_event_log', row['event']['event_id'],
+                         {'event': row['event'], 'status': 'pulled', 'pulled_at': saint.now().isoformat()})
+    return [row['event'] for row in rows]
+
+
 # Status words older callers store in saint_notifications.
 LEGACY_STATUS = {'sent': 'SENT', 'staged': 'STAGED_LOCALLY', 'failed': 'FAILED'}
 
@@ -153,6 +177,13 @@ async def mock_slot_opened(user: str, request: Request):
     """Demo trigger standing in for a real venue provider's availability feed."""
     own(request, user)
     return await run_in_threadpool(lambda: push(court_slot_opened(user)))
+
+
+@router.get('/api/v1/saint/events/pending/{user}')
+async def pending_events(user: str, request: Request):
+    """Saint polls this for events it has not seen yet (it has no inbound URL for Tempo to push to)."""
+    own(request, user)
+    return {'events': await run_in_threadpool(pending, user)}
 
 
 @router.get('/api/v1/saint/tools')

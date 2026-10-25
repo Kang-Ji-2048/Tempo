@@ -94,5 +94,22 @@ class SaintEventTests(unittest.TestCase):
    ok=TestClient(app).post('/api/v1/webhooks/saint-delivery-receipt',json=event.model_dump(mode='json'),headers={'X-Tempo-Webhook-Secret':'s'*32})
   self.assertEqual(ok.status_code,200,ok.text)
   self.assertEqual(log.call_args.args[2:],('PRE_SESSION_PRIMING','alice','+447700900000'))
+ def test_saint_pulls_undelivered_events_once(self):
+  first=self.client.post('/api/v1/saint/events/mock-slot-opened/alice').json()['event']
+  with patch.object(saint,'now',return_value=FIXED.replace(minute=5)):
+   events.push(events.argon_verdict('alice',{'verification_status':'FAIL','right_elbow_contact_deg':150.0}))
+  events.push(events.court_slot_opened('bob'))
+  relay=TestClient(self.client.app,headers=auth_headers('alice','saint'))
+  pulled=relay.get('/api/v1/saint/events/pending/alice').json()['events']
+  self.assertEqual([e['type'] for e in pulled],['court_slot_opened','argon_verdict'])
+  self.assertEqual(pulled[0]['event_id'],first['event_id'])
+  self.assertEqual(relay.get('/api/v1/saint/events/pending/alice').json()['events'],[])
+  self.assertEqual(saint._MEMORY['saint_event_log:'+first['event_id']]['status'],'pulled')
+  # The pulled proposal still goes through the normal approval route.
+  decided=relay.post('/api/v1/saint/actions/decision',json={'proposal':pulled[0]['proposal'],'approved':True})
+  self.assertEqual(decided.json()['approved_via'],'saint_relay')
+ def test_saint_cannot_pull_another_players_events(self):
+  relay=TestClient(self.client.app,headers=auth_headers('alice','saint'))
+  self.assertEqual(relay.get('/api/v1/saint/events/pending/bob').status_code,403)
 
 if __name__=='__main__':unittest.main()
