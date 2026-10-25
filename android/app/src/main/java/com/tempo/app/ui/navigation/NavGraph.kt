@@ -57,6 +57,7 @@ fun TempoNavGraph(
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: "default_session"
             AnalysisScreen(sessionId = sessionId, navController = navController)
         }
+        composable(Screen.Saint.route) { com.tempo.app.feature.saint.SaintScreen(navController) }
         composable(Screen.Live.route) {
             LiveScreen(navController = navController)
         }

@@ -7,3 +7,4 @@ mediapipe==1.1.1
 numpy
 python-multipart
 requests
+tzdata

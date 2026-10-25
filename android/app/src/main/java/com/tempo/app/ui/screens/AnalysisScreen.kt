@@ -205,6 +205,13 @@ fun AnalysisScreen(
                 DebriefHeaderCard(debrief = uiState.debrief!!)
             }
 
+            item {
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.Saint.route) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Plan next session with Saint", color = AccentNeonVolt) }
+            }
+
             // Coach Voice Debrief Player (Media3 ExoPlayer / TTS fallback + Bluetooth earbud routing)
             item {
                 DebriefPlayer(

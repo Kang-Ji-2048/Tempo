@@ -154,6 +154,13 @@ fun HomeScreen(
             }
         }
 
+        OutlinedButton(
+            onClick = { navController.navigate(Screen.Saint.route) },
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(1.dp, AccentNeonVolt),
+            shape = MaterialTheme.shapes.medium
+        ) { Text("Plan with Saint", color = AccentNeonVolt) }
+
         // Onboarding shortcut for testing
         OutlinedButton(
             onClick = { navController.navigate(Screen.Onboarding.route) },

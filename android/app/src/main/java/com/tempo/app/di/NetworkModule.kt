@@ -107,3 +107,13 @@ abstract class RepositoryModule {
         impl: com.tempo.app.repository.UserProfileRepositoryImpl
     ): com.tempo.app.repository.UserProfileRepository
 }
+
+@Module
+@InstallIn(SingletonComponent::class)
+object SaintModule {
+    @Provides @Singleton
+    fun api(retrofit: Retrofit): com.tempo.app.feature.saint.SaintApi =
+        retrofit.create(com.tempo.app.feature.saint.SaintApi::class.java)
+    @Provides @Singleton
+    fun repository(impl: com.tempo.app.feature.saint.SaintRepositoryImpl): com.tempo.app.feature.saint.SaintRepository = impl
+}

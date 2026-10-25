@@ -1460,6 +1460,11 @@ def pitch_deck_architecture_diagram() -> str:
 
 
 app.include_router(create_android_router(analyze_badminton_pipeline, _broadcast_sse_event))
+if __package__:
+    from .saint_commands import router as saint_command_router
+else:
+    from saint_commands import router as saint_command_router
+app.include_router(saint_command_router)
 
 
 if __name__ == "__main__":

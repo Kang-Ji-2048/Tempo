@@ -1,0 +1,123 @@
+{
+  "$defs": {
+    "CourtParams": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Area",
+          "type": "string"
+        },
+        "sport": {
+          "enum": [
+            "badminton",
+            "tennis"
+          ],
+          "title": "Sport",
+          "type": "string"
+        },
+        "indoor": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Indoor"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "duration_minutes": {
+          "default": 60,
+          "enum": [
+            30,
+            60,
+            90
+          ],
+          "title": "Duration Minutes",
+          "type": "integer"
+        },
+        "venue_id": {
+          "enum": [
+            "mock-indoor",
+            "mock-outdoor"
+          ],
+          "title": "Venue Id",
+          "type": "string"
+        },
+        "provider": {
+          "const": "mock",
+          "default": "mock",
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "area",
+        "sport",
+        "starts_at",
+        "venue_id"
+      ],
+      "title": "CourtParams",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The canonical action schema. Add capabilities here and to the executor registry.",
+  "properties": {
+    "type": {
+      "enum": [
+        "search_venues",
+        "book_court"
+      ],
+      "title": "Type",
+      "type": "string"
+    },
+    "params": {
+      "$ref": "#/$defs/CourtParams"
+    },
+    "summary": {
+      "maxLength": 600,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "requires_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Approval",
+      "type": "boolean"
+    },
+    "idempotency_key": {
+      "pattern": "^[a-f0-9]{32}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "user": {
+      "title": "User",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "params",
+    "summary",
+    "idempotency_key",
+    "user",
+    "expires_at"
+  ],
+  "title": "Action",
+  "type": "object"
+}

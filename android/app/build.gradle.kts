@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+}
+
+val tempoLocalProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) propertiesFile.inputStream().use { load(it) }
+}
+val tempoDebugBaseUrl = providers.gradleProperty("tempo.baseUrl").orNull
+    ?: tempoLocalProperties.getProperty("tempo.baseUrl", "http://10.0.6.243:8000/")
+require(tempoDebugBaseUrl.matches(Regex("https?://[A-Za-z0-9.\\-]+(?::[0-9]+)?/"))) {
+    "tempo.baseUrl must be an HTTP(S) server URL ending in /"
 }
 
 android {
@@ -33,7 +45,7 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://10.0.6.243:8000/\"")
+            buildConfigField("String", "BASE_URL", "\"$tempoDebugBaseUrl\"")
             buildConfigField("Boolean", "USE_MOCK_API", "true")
         }
     }
