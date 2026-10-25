@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,16 +17,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -68,16 +66,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -87,6 +86,7 @@ import com.tempo.app.feature.home.HomeViewModel
 import com.tempo.app.feature.home.TheaMessage
 import com.tempo.app.feature.home.TheaSender
 import com.tempo.app.feature.sdui.model.PathProgressWidget
+import com.tempo.app.feature.sdui.model.QuestionWidget
 import com.tempo.app.feature.lesson.LessonRoutes
 import com.tempo.app.feature.thea.ContinueWithTheaButton
 import com.tempo.app.feature.voice.VoiceMicButton
@@ -129,8 +129,7 @@ fun HomeScreen(
             }
         )
     }
-    var inputText by rememberSaveable { mutableStateOf("") }
-    val canSend = inputText.isNotBlank() && !conversationState.isThinking
+    var inputText by remember { mutableStateOf("") }
     // Diagnostics stay hidden: tap the studio title five times to reveal them in the account sheet.
     var titleTaps by remember { mutableStateOf(0) }
     var diagnosticsUnlocked by remember { mutableStateOf(false) }
@@ -247,13 +246,15 @@ fun HomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .imePadding()
             .background(BackgroundOnyx)
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 100.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding(),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // Header: Thea Living Coach Studio Bar
@@ -263,7 +264,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -273,7 +274,7 @@ fun HomeScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "TEMPO",
+                                text = "THEA COACHING ECOSYSTEM",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 1.2.sp
@@ -283,7 +284,7 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Your next session",
+                            text = "Conversational Studio",
                             modifier = Modifier.clickable {
                                 titleTaps += 1
                                 if (titleTaps >= 5) {
@@ -309,7 +310,7 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.ChatBubbleOutline,
-                                contentDescription = "Link WhatsApp",
+                                contentDescription = "Saint WhatsApp Cadence",
                                 tint = AccentNeonVolt,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -333,6 +334,15 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = { navController.navigate(Screen.Saint.route) },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, AccentNeonVolt),
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("Plan with Saint", color = AccentNeonVolt) }
             }
 
             // Sport & Discipline Quick Filter Pill
@@ -395,7 +405,7 @@ fun HomeScreen(
                             }
                         }
                         Text(
-                            text = "Change",
+                            text = "Tap to switch",
                             style = MaterialTheme.typography.labelSmall,
                             color = AccentNeonVolt
                         )
@@ -403,14 +413,31 @@ fun HomeScreen(
                 }
             }
 
+            // Coach Thea: her latest dialogue with the one chat input (text, mic, quick replies) docked inside.
+            item(key = "thea_card") {
+                TheaCoachCard(
+                    messages = conversationState.messages,
+                    isThinking = conversationState.isThinking,
+                    inputText = inputText,
+                    onInputChange = { inputText = it },
+                    onSend = { text ->
+                        if (text.isNotBlank()) {
+                            viewModel.sendMessage(text)
+                            inputText = ""
+                        }
+                    },
+                    onVoiceExchange = { viewModel.refreshFromMemory() }
+                )
+            }
+
             // Quick Training Launch Cards
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Card(
-                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 112.dp),
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
                         border = BorderStroke(1.dp, CardBorderSubtle),
@@ -420,15 +447,15 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = AccentNeonVolt, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Record a stroke", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text("Record Clip", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Review a short practice clip", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text("CameraX 60fps & 33 pose landmarks", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                     }
 
                     Card(
-                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 112.dp),
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
                         border = BorderStroke(1.dp, CardBorderSubtle),
@@ -438,22 +465,13 @@ fun HomeScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Speed, contentDescription = null, tint = AccentNeonVolt, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Live coaching", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text("Live Earbuds", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Listen while you practise", style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                            Text("Real-time cues with 10s cooldown", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                     }
                 }
-            }
-
-            item {
-                OutlinedButton(
-                    onClick = { navController.navigate(Screen.Saint.route) },
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, AccentNeonVolt),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text("Plan with Saint", color = AccentNeonVolt) }
             }
 
             // SECTION 1: Top-Level Duolingo Skill Progression Tree (PathProgressWidget)
@@ -468,128 +486,31 @@ fun HomeScreen(
                 }
             }
 
-            // Two-way voice: speak to Thea; her tools mutate athlete_memory, so re-render from it.
-            item(key = "voice_mic") {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = SurfaceCharcoal,
-                    border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    VoiceMicButton(
-                        channel = "app",
-                        modifier = Modifier.padding(16.dp),
-                        onExchange = { viewModel.refreshFromMemory() }
-                    )
-                }
-            }
-
             item(key = "whatsapp_continue") {
                 ContinueWithTheaButton()
             }
 
-            // SECTION 2: Coach Thea Dialogue Feed (Surface A)
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // Same coach, same memory, over WhatsApp (Saint).
+            item(key = "whatsapp_link") {
+                OutlinedButton(
+                    onClick = { showWhatsAppLink = true },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF25D366))
                 ) {
-                    Text(
-                        text = "Your coach",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        ),
-                        color = AccentNeonVolt
-                    )
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = SurfaceVariantDark
-                    ) {
-                        Text(
-                            text = "Gemini 4 Argon",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = TextSecondarySilver,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            items(
-                items = conversationState.messages,
-                key = { it.id }
-            ) { msg ->
-                TheaMessageBubble(
-                    message = msg,
-                    onAudioPlay = {
-                        // Spoken audio preview
-                    }
-                )
-            }
-
-            if (conversationState.isThinking) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = AccentNeonVolt,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Thea is working through your question…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
-                }
-            }
-
-            // Suggested Conversation Quick Chips
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val chips = listOf(
-                        "What should I practise next?",
-                        "Help me review a stroke",
-                        "Plan my next session"
-                    )
-                    chips.forEach { chipText ->
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = SurfaceCharcoal,
-                            border = BorderStroke(1.dp, CardBorderSubtle),
-                            modifier = Modifier.heightIn(min = 44.dp).clickable(enabled = !conversationState.isThinking) {
-                                viewModel.sendMessage(chipText)
-                            }
-                        ) {
-                            Text(
-                                text = chipText,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = TextSecondarySilver,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-                            )
-                        }
-                    }
+                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = null, tint = Color(0xFF25D366))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Link & Message on WhatsApp", color = TextPrimaryWhite, fontWeight = FontWeight.Bold)
                 }
             }
 
             // SECTION 3: Dynamic Server-Driven UI (SDUI) Interactive Widgets
-            val otherWidgets = conversationState.activeWidgets.filter { it !is PathProgressWidget }
+            // The free-text QuestionWidget duplicates Thea's input pill, so it never renders on Home.
+            val otherWidgets = conversationState.activeWidgets.filter { it !is PathProgressWidget && it !is QuestionWidget }
             if (otherWidgets.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Your next step",
+                        text = "RECOMMENDED ACTION DRILLS & COMPREHENSION",
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -612,76 +533,6 @@ fun HomeScreen(
             }
         }
 
-        // Persistent Interactive Bottom Chat Bar ("Ask Coach Thea...")
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            color = BackgroundOnyx,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            border = BorderStroke(1.dp, CardBorderSubtle)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    placeholder = {
-                        Text(
-                            text = "Ask Thea…",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondarySilver
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = SurfaceCharcoal,
-                        unfocusedContainerColor = SurfaceCharcoal,
-                        focusedTextColor = TextPrimaryWhite,
-                        unfocusedTextColor = TextPrimaryWhite,
-                        focusedIndicatorColor = AccentNeonVolt,
-                        unfocusedIndicatorColor = CardBorderSubtle,
-                        cursorColor = AccentNeonVolt
-                    ),
-                    maxLines = 2,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (canSend) {
-                            viewModel.sendMessage(inputText)
-                            inputText = ""
-                        }
-                    })
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    enabled = canSend,
-                    onClick = {
-                        if (canSend) {
-                            viewModel.sendMessage(inputText)
-                            inputText = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(if (canSend) AccentNeonVolt else SurfaceVariantDark)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "Send",
-                        tint = if (canSend) BackgroundOnyx else TextSecondarySilver,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -814,4 +665,143 @@ private fun WhatsAppLinkDialog(onDismiss: () -> Unit, onLink: (String, (String) 
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+private val THEA_QUICK_REPLIES = listOf(
+    "Why did my contact point drop?",
+    "How do I fix elbow flexion?",
+    "Check my training cadence"
+)
+
+@Composable
+private fun TheaCoachCard(
+    messages: List<TheaMessage>,
+    isThinking: Boolean,
+    inputText: String,
+    onInputChange: (String) -> Unit,
+    onSend: (String) -> Unit,
+    onVoiceExchange: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = SurfaceCharcoal,
+        border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "COACH THEA",
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    ),
+                    color = AccentNeonVolt
+                )
+                Surface(shape = RoundedCornerShape(8.dp), color = SurfaceVariantDark) {
+                    Text(
+                        text = "Gemini 4 Argon",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = TextSecondarySilver,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Keep the card compact: the most recent exchange stays in view.
+            messages.takeLast(4).forEach { msg ->
+                TheaMessageBubble(message = msg, onAudioPlay = {})
+            }
+
+            if (isThinking) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = AccentNeonVolt,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Thea is thinking...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            // "Ask Thea anything..." pill with inline mic and send.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(BackgroundOnyx)
+                    .border(1.dp, CardBorderSubtle, RoundedCornerShape(28.dp))
+                    .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (inputText.isEmpty()) {
+                        Text("Ask Thea anything...", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+                    }
+                    BasicTextField(
+                        value = inputText,
+                        onValueChange = onInputChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = TextPrimaryWhite, fontSize = 15.sp),
+                        cursorBrush = SolidColor(AccentNeonVolt),
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { onSend(inputText) })
+                    )
+                }
+                VoiceMicButton(
+                    channel = "app",
+                    size = 38.dp,
+                    showCaption = false,
+                    onExchange = { onVoiceExchange() }
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                IconButton(
+                    onClick = { onSend(inputText) },
+                    enabled = inputText.isNotBlank(),
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(if (inputText.isNotBlank()) AccentNeonVolt else SurfaceVariantDark)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = "Send",
+                        tint = if (inputText.isNotBlank()) BackgroundOnyx else TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(THEA_QUICK_REPLIES) { chipText ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = SurfaceVariantDark,
+                        border = BorderStroke(1.dp, CardBorderSubtle),
+                        modifier = Modifier.clickable { onSend(chipText) }
+                    ) {
+                        Text(
+                            text = chipText,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = TextSecondarySilver,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

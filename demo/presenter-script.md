@@ -16,7 +16,7 @@ Presenter cue: Frame this as the problem Tempo is addressing; do not imply a com
 
 ## 3. Solution and architecture · 0:30–0:55
 
-Our solution gives the player one clear correction and a drill for the next session. Behind it, Android captures the clip, FastAPI checks the movement and Watch context, MongoDB keeps the history, and Gemini returns the coaching reply. The result comes back to the same player.
+Our solution gives the player one clear correction and a drill for the next session. Behind it, Android captures the clip, Apple Watch readings arrive through the paired iPhone, FastAPI checks the movement and session timing, MongoDB keeps the history, and Gemini returns the coaching reply. The result comes back to the same player.
 
 Presenter cue: Lead with the player benefit, then point across the diagram once. Highest reach is a contact proxy, Watch context uses actual sample timestamps, and model fallbacks stay labelled.
 
@@ -28,9 +28,9 @@ Presenter cue: Live Gemini access must be checked before presenting. Highest rea
 
 ## 5. Use of MongoDB · 1:20–1:45
 
-MongoDB Atlas connects the history behind that coaching. Shared player memory stores goals, sessions and feedback. Time-series storage preserves the actual Watch sample times. Vector search retrieves similar reference strokes. Those references are illustrative, so we do not present the match as a validated technique score.
+MongoDB Atlas connects the history behind that coaching. Player history stores goals, sessions and feedback. Time-series storage preserves the actual Apple Watch sample times. Vector search retrieves similar reference strokes. Those references are illustrative, so we do not present the match as a validated technique score.
 
-Presenter cue: The canonical database is sports_coach_db. Shared player memory and time-series storage are implemented; reference profiles have not been validated against ground truth.
+Presenter cue: The canonical database is sports_coach_db. Player history and time-series storage are implemented; reference profiles have not been validated against ground truth.
 
 ## 6. Use of Saint · 1:45–2:10
 
@@ -48,9 +48,9 @@ VIDEO: The blank 16:9 area is reserved for a prepared recording. No video is emb
 
 ## 8. Impact and next steps · 2:40–3:00
 
-Our prototype gives a player one clear focus, with twenty command phrases checked and twenty-five usable frames from a real clip. The pilot will measure what matters to players: whether the feedback is useful, whether drills get completed and whether players return. Real venue integration follows that pilot.
+Our prototype connects video feedback to a drill and a plan for the next session. The pilot will measure whether players find the feedback useful, their satisfaction, whether they complete drills and whether they return. Real venue integration follows that pilot.
 
-Presenter cue: The numbers on the left are prototype signals, not measured customer impact. The 20 phrases test a deterministic parser; the earlier 25-frame crop used synthetic local biometrics and has no ground-truth angle validation. Feedback usefulness, drill completion and return sessions are proposed pilot measures, not observed results. Timeline stages are planned, not dated commitments.
+Presenter cue: The left-hand column describes prototype capabilities, not measured customer impact. The earlier 20-phrase parser test and 25-frame video crop remain technical checks, not player outcomes. The crop used synthetic local biometrics and has no ground-truth angle validation. Feedback usefulness, player satisfaction, drill completion and return sessions are proposed pilot measures, not observed results. Timeline stages are planned, not dated commitments.
 
 ## 9. Questions and team · Q&A background
 

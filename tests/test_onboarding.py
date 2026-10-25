@@ -104,7 +104,7 @@ def test_full_onboarding_writes_memory_and_builds_five_node_plan(client, user_id
 
     data = flow.send("intensity", "competitive_5x")
     assert data["step_id"] == "schedule" and data["widget"]["widget_type"] == "CheckInScheduleWidget"
-    assert len(data["widget"]["days_of_week"]) == 5 and data["widget"]["slots"]
+    assert len(data["widget"]["days_of_week"]) == 5 and "slots" not in data["widget"]
     assert stored_memory(user_id)["intensity"] == "competitive"
 
     picked = {"days_of_week": ["Monday", "Tuesday", "Wednesday", "Friday", "Saturday"],

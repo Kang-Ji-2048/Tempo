@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
@@ -164,7 +165,8 @@ class MainActivity : ComponentActivity() {
                     TempoNavGraph(
                         navController = navController,
                         startDestination = startDestination,
-                        modifier = Modifier.padding(innerPadding)
+                        // Consume the bar insets so screens' own navigationBarsPadding/imePadding don't double up.
+                        modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
                     )
                 }
             }
