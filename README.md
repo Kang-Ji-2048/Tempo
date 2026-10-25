@@ -45,6 +45,10 @@ Android mock/API URL settings are unchanged; real-device testing needs a reachab
 full backend and a configured local Android SDK. Render's existing service hosts
 the Watch receiver only.
 
+## Demo video
+
+The recording page is in [demo-video/](demo-video/). The recording will be added later. Deploy this folder as a separate static Vercel project; see [setup and video instructions](demo-video/README.md).
+
 ## Demo slides
 
 The supplied Tempo pitch deck is in [demo/index.html](demo/index.html). See [hosting instructions](demo/README.md) to mount it at /demo/ on the Vercel website. The website source has not yet been identified, so this does not publish the deck.

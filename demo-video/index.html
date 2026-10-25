@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="A dedicated space to watch the demo.">
+  <meta name="theme-color" content="#f8f8f6">
+  <title>The Tempo demo — Demo room</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header"><a class="brand" href="./" aria-label="Demo room home"><span class="brand-icon">▶</span> demo room<span class="brand-dot">.</span></a><span class="header-label">A closer look.</span></header>
+  <main>
+    <section class="intro"><div class="eyebrow"><span></span> THE DEMO ROOM</div><h1>See it in action<span>.</span></h1><p>One recording. The whole picture.<br>Watch the demo, at your own pace.</p></section>
+    <section class="stage" id="stage" aria-label="Demo video">
+      <div class="stage-top"><span><i></i> DEMO RECORDING</span><span id="stageType">YOUR FRONT-ROW SEAT</span></div>
+      <div class="empty" id="empty">
+        <div class="orb orb-one"></div><div class="orb orb-two"></div><div class="stage-grid"></div>
+        <div class="empty-content"><div class="video-symbol" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect x="4" y="8" width="20" height="20" rx="5" stroke="currentColor" stroke-width="1.5"/><path d="m24 14 8-4v16l-8-4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div><span class="small-label">GOOD THINGS DESERVE A CLOSER LOOK</span><h2>A space for your demo.</h2><p id="emptyDescription">Your recording will appear right here.</p><button class="white-button" id="pickVideo"><span>＋</span> Preview a recording</button><span class="file-hint">MP4, MOV or WebM · or drop a video here</span></div>
+      </div>
+      <video id="video" controls playsinline preload="metadata" hidden aria-label="Demo recording"></video>
+      <div class="stage-bottom"><span id="status">READY WHEN YOU ARE</span><span class="sound-note"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 6H1v4h2l4 3V3L3 6Z" stroke="currentColor"/><path d="M10 5c2 1.5 2 4.5 0 6m2-8c3.5 2.5 3.5 7.5 0 10" stroke="currentColor"/></svg> Best with sound on</span></div>
+    </section>
+    <section class="details"><div><span class="eyebrow">THE RECORDING</span><h2 id="demoTitle">The demo</h2><p id="demoDescription">Press play, take a look around, and catch every detail.</p></div><button class="text-button" id="editButton">Customize page <span>↗</span></button></section>
+    <section class="setup-note" id="setupNote"><span class="note-icon">↳</span><p><strong>Have the video on WhatsApp?</strong> Save it to your device, then preview it above. A preview stays on your device; add the file to the site to make it available to everyone.</p></section>
+  </main>
+  <footer><span>Made for the full picture.</span><span>DEMO ROOM <span class="footer-star">✳</span></span></footer>
+  <input id="fileInput" type="file" accept="video/*,.mov,.mp4,.webm" hidden>
+  <dialog id="settings"><form id="settingsForm"><div class="dialog-heading"><h2>Make it yours.</h2><button type="button" class="close" id="closeSettings" aria-label="Close settings">×</button></div><p>Changes are saved in this browser. To share them with everyone, update config.js before deploying.</p><label for="titleInput">Video title</label><input id="titleInput" maxlength="100" required><label for="descriptionInput">Description</label><textarea id="descriptionInput" rows="3" maxlength="300"></textarea><label for="urlInput">Video URL <span>(optional)</span></label><input id="urlInput" type="url" placeholder="https://example.com/demo.mp4"><small>Use a direct video file URL. A WhatsApp chat or share link won’t play here.</small><button class="save-button" type="submit">Save changes <span>↗</span></button></form></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="config.js"></script><script src="app.js"></script>
+</body>
+</html>
