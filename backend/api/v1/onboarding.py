@@ -43,7 +43,6 @@ INTENSITY_OPTIONS = {
     "regular_3x": ("regular", 3, "3x / week", "Steady progress with recovery days"),
     "competitive_5x": ("competitive", 5, "5x / week", "High volume for fast improvement"),
 }
-TIME_SLOTS = [("07:00", "Morning"), ("12:30", "Lunch"), ("18:00", "Evening"), ("20:00", "Late evening")]
 ARCHETYPES = {"badminton": "Viktor Axelsen", "tennis": "Roger Federer"}
 
 # Two diagnostic questions per sport; the athlete's score (0-2) maps to their level.
@@ -158,10 +157,7 @@ def schedule_step_widget(sessions_per_week: int) -> Dict[str, Any]:
     return {"widget_type": "CheckInScheduleWidget", "id": "schedule", "title": "Pick your training days",
             "subtitle": f"{sessions_per_week}x per week. Thea will nudge you before each session.",
             "days_of_week": days, "target_time_utc": coach_converse.DEFAULT_TIME_UTC, "priming_lead_minutes": 30,
-            "preferred_channel": "whatsapp",
-            "slots": [{"slot_id": t, "day_label": label, "time_label": f"{t} UTC",
-                       "recommended": t == coach_converse.DEFAULT_TIME_UTC} for t, label in TIME_SLOTS],
-            "selected_slot_id": coach_converse.DEFAULT_TIME_UTC}
+            "duration_minutes": 60, "preferred_channel": "whatsapp"}
 
 
 def parse_schedule_answer(answer: str, sessions_per_week: int) -> Dict[str, Any]:
