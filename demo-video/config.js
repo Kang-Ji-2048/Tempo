@@ -2,7 +2,7 @@
 // then change videoUrl to "demo.mp4" and deploy the folder to Vercel.
 window.DEMO_CONFIG = {
   title: 'The Tempo demo',
-  description: 'Watch the current video. The final demo recording will be added here later.',
-  videoUrl: 'https://www.youtube.com/watch?v=9EeyAyKNvpU',
+  description: 'Watch the Tempo demo, at your own pace.',
+  videoUrl: 'demo.mp4',
   posterUrl: ''
 };

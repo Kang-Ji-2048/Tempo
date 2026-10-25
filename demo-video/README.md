@@ -12,7 +12,7 @@ The repository ignores MP4 files by default. To publish this specific recording 
 
 For large recordings, use a direct HTTPS video file URL in `config.js` instead. A WhatsApp conversation or share URL cannot be used as the video source.
 
-YouTube watch, share, Shorts, and embed links are also supported. The current temporary video is embedded from YouTube; it has not been copied or re-uploaded. A Watch on YouTube link remains available if the embedded player is restricted.
+The current recording is `demo.mp4`, prepared from the supplied My Movie 3.mp4 as a web-optimized H.264/AAC MP4 with fast-start playback. YouTube watch, share, Shorts, and embed links are also supported if needed later.
 
 ## Preview
 
@@ -25,7 +25,7 @@ The video picker and drag-and-drop work locally. They do not upload the file or 
 
 Deploy this folder as a static site to your Vercel account, using the Vercel CLI or a connected Git repository. Select the Other framework preset, root directory `demo-video`, output directory `.`, and no build or install command. The local `vercel.json` contains the static deployment settings.
 
-The page can be deployed before the recording is ready. It shows a coming-soon description and a local preview option. Video playback will need to be checked after the real file is supplied.
+The page plays the bundled recording using the browser's native video player, with seeking, sound, and fullscreen controls.
 
 ## Checks completed
 
