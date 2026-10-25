@@ -12,6 +12,8 @@ The repository ignores MP4 files by default. To publish this specific recording 
 
 For large recordings, use a direct HTTPS video file URL in `config.js` instead. A WhatsApp conversation or share URL cannot be used as the video source.
 
+YouTube watch, share, Shorts, and embed links are also supported. The current temporary video is embedded from YouTube; it has not been copied or re-uploaded. A Watch on YouTube link remains available if the embedded player is restricted.
+
 ## Preview
 
 Run `npm start` from this folder, then open `http://127.0.0.1:3000`.

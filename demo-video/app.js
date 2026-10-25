@@ -10,6 +10,25 @@
   }
   function showVideo(url, local = false) {
     $('video').pause();
+    $('youtube').hidden = true; $('youtube').removeAttribute('src'); $('videoSource').hidden = true;
+    let youtubeId;
+    try {
+      const parsed = new URL(url, location.href);
+      const host = parsed.hostname.replace(/^www\./, '');
+      if (host === 'youtu.be') youtubeId = parsed.pathname.split('/')[1];
+      else if (['youtube.com', 'm.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+        youtubeId = parsed.searchParams.get('v') || (/^\/(embed|shorts|live)\//.test(parsed.pathname) ? parsed.pathname.split('/')[2] : null);
+      }
+    } catch {}
+    if (youtubeId && /^[\w-]{11}$/.test(youtubeId)) {
+      $('video').hidden = true; $('video').removeAttribute('src'); $('video').load();
+      $('youtube').src = 'https://www.youtube-nocookie.com/embed/' + youtubeId + '?rel=0';
+      $('youtube').hidden = false; $('empty').hidden = true; $('setupNote').hidden = true;
+      $('stageType').textContent = 'YOUTUBE'; $('status').textContent = 'READY TO PLAY';
+      $('youtubeLink').href = 'https://www.youtube.com/watch?v=' + youtubeId;
+      $('videoSource').hidden = false;
+      return;
+    }
     $('video').src = url;
     $('video').hidden = false; $('empty').hidden = true;
     $('setupNote').hidden = !local;
@@ -23,6 +42,7 @@
     document.title = (config.title || 'The demo') + ' — Demo room';
     if (config.videoUrl) showVideo(config.videoUrl);
     else {
+      $('youtube').hidden = true; $('youtube').removeAttribute('src'); $('videoSource').hidden = true;
       $('video').pause(); $('video').removeAttribute('src'); $('video').load();
       $('video').hidden = true; $('empty').hidden = false; $('setupNote').hidden = false;
       $('status').textContent = 'READY WHEN YOU ARE'; $('stageType').textContent = 'YOUR FRONT-ROW SEAT';
