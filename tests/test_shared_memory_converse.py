@@ -128,10 +128,11 @@ def test_fallback_without_gemini_applies_same_tools(client, user_id, monkeypatch
 
 def test_level_plan_courts_and_lesson_completion(client, user_id, monkeypatch):
     monkeypatch.setattr(llm_config, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(coach_converse, "fetch_weather", lambda lat, lng: {"available": False})
     client.post("/api/v1/coach/converse", json={"message": "I play tennis"})
     body = client.post("/api/v1/coach/converse",
                        json={"message": "I'm advanced, which courts are near me?"}).json()
-    assert body["tool_actions_taken"] == ["set_athlete_level_and_generate_plan", "find_nearby_courts"]
+    assert body["tool_actions_taken"] == ["set_athlete_level_and_generate_plan", "find_nearby_courts_and_weather"]
     assert body["athlete_memory"]["level"] == "advanced"
     courts = next(w for w in body["active_widgets"] if w["widget_type"] == "CourtListWidget")["courts"]
     assert courts and courts == sorted(courts, key=lambda c: ("tennis" not in c["sports"], c["distance_km"]))
@@ -232,5 +233,5 @@ def test_new_athlete_gets_warm_greeting_and_failures_stay_json(client, user_id, 
 
 def test_system_prompt_carries_encode_thea_persona():
     prompt = coach_converse.system_instruction({"user_id": "u"}, None, "app")
-    for fact in ("Thea", "Encode Club", "thea@saint.work", "+44 7985 791437", "Finsbury Leisure", "never say it's done"):
+    for fact in ("Thea", "Encode Club", "thea@saint.work", "+44 7985 791437", "Finsbury Leisure", "never say a booking"):
         assert fact in prompt

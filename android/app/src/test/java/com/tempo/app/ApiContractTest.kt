@@ -8,6 +8,9 @@ import com.tempo.app.feature.sdui.model.ConceptQuizWidget
 import com.tempo.app.feature.sdui.model.PathProgressWidget
 import com.tempo.app.feature.sdui.model.UnknownWidget
 import com.tempo.app.network.models.AuthResponseDto
+import com.tempo.app.network.models.CoachBriefDto
+import com.tempo.app.network.models.CourtsResponseDto
+import com.tempo.app.network.models.MemoryVersionDto
 import com.tempo.app.network.models.CoachConverseResponseDto
 import com.tempo.app.network.models.CoachMemoryResponseDto
 import com.tempo.app.network.models.OnboardingStepResponseDto
@@ -115,5 +118,19 @@ class ApiContractTest {
         assertFalse(reply.speakText.isNullOrBlank())
         assertTrue(reply.athleteMemory != null)
         assertKnownWidgets(reply.dynamicWidgets)
+    }
+
+    @Test
+    fun `whatsapp brief, courts and memory version decode`() {
+        val brief = json.decodeFromString<CoachBriefDto>(fixture("coach_brief"))
+        assertTrue(brief.briefText.startsWith("Hi Thea [Tempo Sync"))
+        assertTrue(brief.whatsappLink!!.startsWith("https://wa.me/447985791437"))
+
+        val courts = json.decodeFromString<CourtsResponseDto>(fixture("coach_courts"))
+        assertTrue(courts.courts.isNotEmpty())
+        assertTrue(courts.playCall!!.reason.isNotBlank())
+
+        val version = json.decodeFromString<MemoryVersionDto>(fixture("coach_memory_version"))
+        assertTrue(!version.updatedAt.isNullOrBlank())
     }
 }

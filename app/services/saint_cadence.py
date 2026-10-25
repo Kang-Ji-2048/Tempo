@@ -264,6 +264,7 @@ class SaintCadenceService:
             f"{header_emoji}\n\n"
             f"{payload.plain_text_message}"
             f"{cta_str}"
+            f"\n\n— Thea, your Tempo coach (thea@saint.work)"
         )
 
     @classmethod

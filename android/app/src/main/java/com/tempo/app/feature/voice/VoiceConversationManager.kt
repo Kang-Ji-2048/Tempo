@@ -20,7 +20,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -135,6 +136,16 @@ class VoiceConversationManager @Inject constructor(
     private var ttsReady = false
     private var activeChannel = "app"
     private var conversationJob: Job? = null
+    /** When set, transcripts go here (e.g. Live's WebSocket voice_query) instead of HTTP converse. */
+    private var transcriptHandler: ((String) -> Unit)? = null
+
+    private val _handsFree = MutableStateFlow(false)
+    /** Hands-free: after Thea finishes speaking, listen again automatically (continuous turns). */
+    val handsFree: StateFlow<Boolean> = _handsFree.asStateFlow()
+
+    fun setHandsFree(enabled: Boolean) {
+        _handsFree.value = enabled
+    }
 
     private val _state = MutableStateFlow<VoiceState>(VoiceState.Idle)
     val state: StateFlow<VoiceState> = _state.asStateFlow()
@@ -171,11 +182,12 @@ class VoiceConversationManager @Inject constructor(
     }
 
     /** Toggle: start listening, or stop and discard the current turn. */
-    fun toggle(channel: String) {
-        if (isBusy) cancel() else startListening(channel)
+    fun toggle(channel: String, onTranscript: ((String) -> Unit)? = null) {
+        if (isBusy) cancel() else startListening(channel, onTranscript)
     }
 
-    fun startListening(channel: String) {
+    fun startListening(channel: String, onTranscript: ((String) -> Unit)? = null) {
+        transcriptHandler = onTranscript
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             _state.value = VoiceState.Error("Microphone permission is needed to talk to Thea.")
             return
@@ -198,6 +210,7 @@ class VoiceConversationManager @Inject constructor(
     }
 
     fun cancel() {
+        _handsFree.value = false
         recognizer?.cancel()
         conversationJob?.cancel()
         tts?.stop()
@@ -235,6 +248,25 @@ class VoiceConversationManager @Inject constructor(
         }
     }
 
+    /**
+     * A reply that arrived over another transport (Live's WebSocket voice_reply): speak it right away,
+     * bypassing the form-cue cooldown, and publish it like an HTTP turn.
+     */
+    fun deliverReply(channel: String, transcript: String, replyText: String, speakText: String?,
+                     toolActions: List<String>, athleteMemory: JsonObject?) {
+        val spoken = speakText?.takeIf { it.isNotBlank() } ?: replyText
+        _state.value = VoiceState.Speaking(transcript, replyText)
+        speak(spoken)
+        scope.launch { _exchanges.emit(VoiceExchange(channel, transcript, replyText, spoken, toolActions, athleteMemory, emptyList())) }
+    }
+
+    /** Speak a coach line immediately (e.g. a set summary) without a listening turn. */
+    fun announce(text: String) {
+        if (text.isBlank()) return
+        _state.value = VoiceState.Speaking("", text)
+        speak(text)
+    }
+
     private fun speak(text: String) {
         if (ttsReady) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "thea_${System.currentTimeMillis()}")
@@ -244,7 +276,11 @@ class VoiceConversationManager @Inject constructor(
     }
 
     private fun settle() {
-        scope.launch { if (_state.value is VoiceState.Speaking) _state.value = VoiceState.Idle }
+        scope.launch {
+            if (_state.value !is VoiceState.Speaking) return@launch
+            _state.value = VoiceState.Idle
+            if (_handsFree.value) startListening(activeChannel, transcriptHandler)
+        }
     }
 
     private val listener = object : RecognitionListener {
@@ -262,11 +298,19 @@ class VoiceConversationManager @Inject constructor(
 
         override fun onResults(results: Bundle?) {
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-            if (text.isBlank()) _state.value = VoiceState.Error("I didn't catch that. Tap the mic and try again.")
-            else ask(text, activeChannel)
+            val handler = transcriptHandler
+            when {
+                text.isBlank() -> _state.value = VoiceState.Error("I didn't catch that. Tap the mic and try again.")
+                handler != null -> {
+                    _state.value = VoiceState.Thinking(text)
+                    handler(text)
+                }
+                else -> ask(text, activeChannel)
+            }
         }
 
         override fun onError(error: Int) {
+            _handsFree.value = false  // silence or a failure ends hands-free mode
             _state.value = VoiceState.Error(
                 when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
@@ -296,6 +340,7 @@ class VoiceViewModel @Inject constructor(val manager: VoiceConversationManager) 
  * Prominent mic for talking to Thea. Asks for RECORD_AUDIO on first tap, shows what was heard and
  * Thea's reply, and calls [onExchange] after each answer so the screen can refresh from memory.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VoiceMicButton(
     channel: String,
@@ -303,14 +348,17 @@ fun VoiceMicButton(
     size: Dp = 64.dp,
     showCaption: Boolean = true,
     onExchange: (VoiceExchange) -> Unit = {},
+    /** Route transcripts somewhere other than HTTP converse (Live sends them over its WebSocket). */
+    onTranscript: ((String) -> Unit)? = null,
     viewModel: VoiceViewModel = hiltViewModel(),
 ) {
     val manager = viewModel.manager
     val state by manager.state.collectAsStateWithLifecycle()
+    val handsFree by manager.handsFree.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val latestOnExchange by rememberUpdatedState(onExchange)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) manager.startListening(channel)
+        if (granted) manager.startListening(channel, onTranscript)
     }
 
     LaunchedEffect(manager, channel) {
@@ -330,12 +378,27 @@ fun VoiceMicButton(
                 .scale(if (listening) pulse else 1f)
                 .clip(CircleShape)
                 .background(if (listening) ErrorRed else AccentNeonVolt)
-                .clickable {
-                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                        PackageManager.PERMISSION_GRANTED
-                    if (granted || manager.isBusy) manager.toggle(channel)
-                    else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                },
+                .combinedClickable(
+                    onClick = {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED
+                        if (granted || manager.isBusy) manager.toggle(channel, onTranscript)
+                        else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onLongClick = {
+                        // Long-press: hands-free conversation (keeps listening after each answer).
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED
+                        if (!granted) {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else if (handsFree) {
+                            manager.cancel()
+                        } else {
+                            manager.setHandsFree(true)
+                            if (!manager.isBusy) manager.startListening(channel, onTranscript)
+                        }
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             when (state) {
@@ -358,7 +421,8 @@ fun VoiceMicButton(
             Spacer(Modifier.width(14.dp))
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val (headline, detail) = when (val s = state) {
-                    VoiceState.Idle -> "Talk to Thea" to "Ask a question or say \"switch me to intermediate\"."
+                    VoiceState.Idle -> (if (handsFree) "Hands-free on" else "Talk to Thea") to
+                        "Tap to ask, long-press for hands-free. Try \"switch me to intermediate\"."
                     is VoiceState.Listening -> "Listening…" to s.partial.ifBlank { "Go ahead, I'm listening." }
                     is VoiceState.Thinking -> "You said" to "\"${s.transcript}\""
                     is VoiceState.Speaking -> "Thea" to s.reply

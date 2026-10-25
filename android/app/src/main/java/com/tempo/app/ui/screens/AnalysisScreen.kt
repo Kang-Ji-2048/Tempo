@@ -55,6 +55,9 @@ import com.tempo.app.feature.analysis.ui.AnalysisStepper
 import com.tempo.app.feature.audio.ui.DebriefPlayer
 import com.tempo.app.feature.correction.ui.KeyframeStripView
 import com.tempo.app.feature.correction.ui.VisualCorrectionPlayer
+import com.tempo.app.feature.correction.model.KineticPhaseUiModel
+import com.tempo.app.feature.lesson.LessonRoutes
+import com.tempo.app.feature.thea.ContinueWithTheaButton
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
 import com.tempo.app.feature.analysis.CurriculumAdaptationUi
@@ -216,6 +219,12 @@ fun AnalysisScreen(
             proComparison?.takeIf { it.angles.isNotEmpty() }?.let { comparison ->
                 item { ProComparisonCard(comparison) }
             }
+            if (uiState.kineticPhases.isNotEmpty()) {
+                item { PhaseBreakdownCard(uiState.kineticPhases) }
+            }
+            item {
+                ContinueWithTheaButton(question = "Can you turn this breakdown into my next session plan?")
+            }
 
             item {
                 OutlinedButton(
@@ -275,7 +284,10 @@ fun AnalysisScreen(
                 items(uiState.widgets, key = { it.key }) { widget ->
                     WidgetRenderer(
                         widget = widget,
-                        onAction = { action -> viewModel.onWidgetAction(action) }
+                        onAction = { action -> viewModel.onWidgetAction(action) },
+                        // "Do This Live": remedial drills open Live mode bound to that drill.
+                        onDrillLive = { drill -> navController.navigate(LessonRoutes.live(null, drill.id)) },
+                        onDrillUpload = { navController.navigate(Screen.Capture.route) }
                     )
                 }
             }
@@ -555,6 +567,41 @@ private fun ProComparisonCard(comparison: ProComparisonUi) {
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
+        }
+    }
+}
+
+
+/** The four kinetic phases with measured angles; Impact is compared against the matched pro. */
+@Composable
+private fun PhaseBreakdownCard(phases: List<KineticPhaseUiModel>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
+        border = BorderStroke(1.dp, CardBorderSubtle)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "PHASE BREAKDOWN",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+                color = AccentNeonVolt
+            )
+            phases.forEach { phase ->
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(
+                        text = phase.phaseName,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        color = TextPrimaryWhite,
+                        modifier = Modifier.width(110.dp)
+                    )
+                    Text(
+                        text = phase.observation.ifBlank { "${phase.timestampMs} ms" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondarySilver
+                    )
+                }
+            }
         }
     }
 }

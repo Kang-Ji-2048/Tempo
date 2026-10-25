@@ -16,11 +16,14 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+import requests
+from urllib.parse import quote
+
 if __package__:
-    from . import db_mongo, llm_config, sports_config
+    from . import db_mongo, kinematics_engine, llm_config, sports_config
     from .auth import principal
 else:
-    import db_mongo, llm_config, sports_config
+    import db_mongo, kinematics_engine, llm_config, sports_config
     from auth import principal
 
 logger = logging.getLogger("tempo.coach_converse")
@@ -207,6 +210,7 @@ class TheaToolbox:
         return self.memory
 
     def run(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        name = TOOL_ALIASES.get(name, name)
         tool = TOOL_IMPLEMENTATIONS.get(name)
         if tool is None:
             return {"ok": False, "error": f"Unknown tool {name}"}
@@ -226,12 +230,15 @@ class TheaToolbox:
         return {"curriculum_nodes": [{"id": n["id"], "title": n["title"], "status": n["status"]} for n in nodes]}
 
     def set_sport_and_goals(self, sport: str, motivation_why: Optional[str] = None,
-                            intensity: Optional[str] = None) -> Dict[str, Any]:
+                            intensity: Optional[str] = None, skill_focus: Optional[str] = None) -> Dict[str, Any]:
         sport_id = str(sport).strip().lower()
         definition = sports_config.get_sport(sport_id)
         if definition is None:
             raise ValueError(f"Unsupported sport {sport}; choose one of {list(sports_config.SPORTS_CATALOG)}")
+        if skill_focus and not any(s.id == skill_focus for s in definition.skills):
+            raise ValueError(f"{skill_focus} is not a {sport_id} skill; choose one of {[s.id for s in definition.skills]}")
         switched = sport_id != self.memory.get("sport")
+        refocused = bool(skill_focus) and skill_focus != self.memory.get("skill_focus")
         updates: Dict[str, Any] = {"sport": sport_id}
         if motivation_why:
             updates["motivation_why"] = str(motivation_why).strip()[:500]
@@ -241,11 +248,13 @@ class TheaToolbox:
             updates["skill_focus"] = next((s.id for s in definition.skills if s.analysis_ready),
                                           definition.skills[0].id if definition.skills else None)
             updates["recent_flaws"] = []
+        if skill_focus:
+            updates["skill_focus"] = skill_focus
         self._save(updates)
         result: Dict[str, Any] = {"sport": sport_id, "intensity": self.memory.get("intensity"),
                                   "motivation_why": self.memory.get("motivation_why"),
                                   "skill_focus": self.memory.get("skill_focus")}
-        if switched or not self.memory.get("curriculum_nodes"):
+        if switched or refocused or not self.memory.get("curriculum_nodes"):
             # A new sport always gets a starter plan; the coach can refine it with the level tool.
             result["plan"] = self._plan(sport_id, self.memory.get("level") or "beginner",
                                         self.memory.get("skill_focus"))
@@ -268,14 +277,21 @@ class TheaToolbox:
         return {"node_id": node_id, "status": status,
                 "next_active": next((n["id"] for n in self.memory["curriculum_nodes"] if n["status"] == "active"), None)}
 
-    def assign_custom_drill(self, title: str, instruction: str, target_reps: int, focus_cue: str) -> Dict[str, Any]:
+    def assign_custom_drill(self, title: str, instruction: str, target_reps: int, focus_cue: str,
+                            stroke_type: Optional[str] = None, sequence: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Push a drill to Home and to the head of the Live queue (stroke_type picks the live tracker)."""
         reps = int(target_reps)
         if not 1 <= reps <= 500:
             raise ValueError("target_reps must be between 1 and 500")
+        for stroke in [stroke_type, *(sequence or [])]:
+            if stroke and kinematics_engine.stroke_for_skill(stroke) is None:
+                raise ValueError(f"Unknown stroke_type {stroke}; choose one of {sorted(kinematics_engine.SKILL_TO_STROKE)}")
         sport = sports_config.get_sport(self.memory.get("sport") or "")
         drill = {"id": f"drill_custom_{uuid.uuid4().hex[:8]}", "title": str(title).strip()[:120],
                  "instruction": str(instruction).strip()[:1000], "target_reps": reps,
                  "focus_cue": str(focus_cue).strip()[:240],
+                 "stroke_type": stroke_type or self.memory.get("skill_focus"),
+                 **({"sequence": list(sequence)} if sequence else {}),
                  "youtube_url": db_mongo.youtube_search_url(sport.display_name if sport else "", str(title), "drill"),
                  "assigned_at": datetime.now(timezone.utc).isoformat()}
         drills = (self.memory.get("assigned_drills") or []) + [drill]
@@ -284,7 +300,8 @@ class TheaToolbox:
         return {"drill": drill}
 
     def update_training_schedule(self, days: Any = None, time_utc: Optional[str] = None,
-                                 preferred_channel: Optional[str] = None, day_times: Any = None) -> Dict[str, Any]:
+                                 preferred_channel: Optional[str] = None, day_times: Any = None,
+                                 duration_min: Optional[int] = None) -> Dict[str, Any]:
         current = self.memory.get("reminder_schedule") or {}
         time_value = (time_utc or current.get("time_utc") or DEFAULT_TIME_UTC).strip()
         if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_value):
@@ -300,7 +317,10 @@ class TheaToolbox:
         # Per-day times survive for days still trained; a new global time_utc clears them.
         kept = {} if time_utc else {d: t for d, t in (current.get("day_times") or {}).items() if d in all_days}
         merged = {d: t for d, t in {**kept, **overrides}.items() if t != time_value}
-        schedule = {"days_of_week": all_days, "time_utc": time_value, "day_times": merged,
+        duration = int(duration_min) if duration_min is not None else int(current.get("duration_min") or 60)
+        if not 15 <= duration <= 240:
+            raise ValueError("duration_min must be between 15 and 240")
+        schedule = {"days_of_week": all_days, "time_utc": time_value, "day_times": merged, "duration_min": duration,
                     "preferred_channel": channel, "priming_lead_minutes": current.get("priming_lead_minutes", 30)}
         self._save({"reminder_schedule": schedule})
         self._sync_cadence_schedule(schedule)
@@ -345,32 +365,214 @@ class TheaToolbox:
         return {"focus_note": note, "skill_focus": self.memory.get("skill_focus"),
                 "matched_skill": skill.name if skill else None}
 
-    def find_nearby_courts(self, lat: float, lng: float) -> Dict[str, Any]:
+    def get_full_athlete_status(self) -> Dict[str, Any]:
+        """Everything Thea needs in one read: profile, plan, schedule, gear, recent sessions and HR trend."""
+        m = self.memory
+        nodes = m.get("curriculum_nodes") or []
+        active = next((n for n in nodes if n.get("status") == "active"), None)
+        return {
+            "profile": {k: m.get(k) for k in ("sport", "skill_focus", "focus_note", "level", "motivation_why",
+                                              "intensity", "phone_number")},
+            "plan": {"completed": sum(n.get("status") == "completed" for n in nodes), "total": len(nodes),
+                     "active_lesson": {k: active.get(k) for k in ("id", "title", "attempts")} if active else None},
+            "schedule": m.get("reminder_schedule"),
+            "assigned_drills": [{k: d.get(k) for k in ("id", "title", "target_reps", "stroke_type")}
+                                for d in (m.get("assigned_drills") or [])[-5:]],
+            "gear_list": m.get("gear_list") or [],
+            "recent_flaws": (m.get("recent_flaws") or [])[:3],
+            "recent_sessions": recent_sessions(self.user_id),
+            "heart_rate": heart_rate_stats(self.user_id),
+        }
+
+    def find_nearby_courts_and_weather(self, lat: float = DEFAULT_LAT, lng: float = DEFAULT_LNG,
+                                       sport: Optional[str] = None) -> Dict[str, Any]:
+        """$nearSphere courts plus a play/postpone call from the next hours' forecast (indoor vs outdoor)."""
         lat, lng = float(lat), float(lng)
         if not (-90 <= lat <= 90 and -180 <= lng <= 180):
             raise ValueError("lat/lng out of range")
-        found = db_mongo.find_nearby_facilities(lat, lng)
-        sport = self.memory.get("sport")
+        sport = (sport or self.memory.get("sport") or "").strip().lower() or None
+        found = db_mongo.find_nearby_facilities(lat, lng, limit=8)
         courts = sorted(found["facilities"], key=lambda f: (sport not in (f.get("sports") or []), f["distance_km"]))
-        courts = [{k: f.get(k) for k in ("facility_id", "name", "postcode", "sports", "distance_km")} for f in courts]
+        courts = [{k: f.get(k) for k in ("facility_id", "name", "postcode", "sports", "indoor", "outdoor", "distance_km")}
+                  for f in courts][:5]
+        weather = fetch_weather(lat, lng)
+        call = play_call(sport, weather, courts)
         self.widgets["courts"] = {"widget_type": "CourtListWidget", "title": "Courts near you",
-                                  "search_method": found["method"], "courts": courts}
-        return {"courts": courts, "search_method": found["method"]}
+                                  "search_method": found["method"], "courts": courts, "play_call": call,
+                                  "weather": weather}
+        return {"courts": courts, "search_method": found["method"], "weather": weather, "play_call": call,
+                "booking_note": "Live prices and slots change: check the venue's booking page, or ask me to "
+                                "draft the booking request for Saint to send."}
+
+    def draft_partner_or_coach_message(self, purpose: str, partner_name: Optional[str] = None,
+                                       proposed_time: Optional[str] = None, tone: Optional[str] = None) -> Dict[str, Any]:
+        """Ready-to-send WhatsApp text. Saved as a draft; Saint only sends it with the athlete's approval."""
+        purpose = str(purpose).strip().lower()
+        if purpose not in DRAFT_PURPOSES:
+            raise ValueError(f"purpose must be one of {sorted(DRAFT_PURPOSES)}")
+        tone = (tone or "friendly").strip().lower()
+        if tone not in ("friendly", "formal", "brief"):
+            raise ValueError("tone must be friendly, formal or brief")
+        m = self.memory
+        sport = (m.get("sport") or "a hit").replace("_", " ")
+        who = (partner_name or "").strip() or ("Coach" if purpose == "coach_update" else "there")
+        when = (proposed_time or "").strip() or _next_session_label(m.get("reminder_schedule"))
+        focus = m.get("focus_note") or (m.get("skill_focus") or "").replace("_", " ")
+        body = DRAFT_PURPOSES[purpose].format(sport=sport, when=when or "this week", focus=focus or "my game",
+                                              level=m.get("level") or "club")
+        greeting = {"friendly": f"Hey {who}! ", "formal": f"Hello {who}, ", "brief": f"Hi {who}, "}[tone]
+        closing = {"friendly": " Let me know!", "formal": " Kind regards.", "brief": ""}[tone]
+        text = (greeting + body + closing)[:600]
+        draft = {"id": f"draft_{uuid.uuid4().hex[:8]}", "purpose": purpose, "to": partner_name, "text": text,
+                 "status": "draft_awaiting_approval", "created_at": datetime.now(timezone.utc).isoformat()}
+        self._save({"message_drafts": ((m.get("message_drafts") or []) + [draft])[-5:]})
+        return {"draft": draft, "share_link": "https://wa.me/?text=" + quote(text), "sent": False}
+
+    def manage_gear_reorder_list(self, action: str, item_name: Optional[str] = None,
+                                 notes: Optional[str] = None, quantity: Optional[int] = None) -> Dict[str, Any]:
+        """Maintain athlete_memory.gear_list (restrings, shuttle tubes, overgrips, shoes). Never places an order."""
+        action = str(action).strip().lower()
+        if action not in ("add", "remove", "mark_ordered", "list"):
+            raise ValueError("action must be add, remove, mark_ordered or list")
+        gear = [dict(g) for g in self.memory.get("gear_list") or []]
+        item = (item_name or "").strip()[:80]
+        key = item.lower()
+        if action != "list" and not item:
+            raise ValueError("item_name is required for add, remove and mark_ordered")
+        existing = next((g for g in gear if g["item"].lower() == key), None)
+        if action == "add":
+            if existing:
+                existing.update({k: v for k, v in (("notes", (notes or "").strip()[:200] or None),
+                                                    ("quantity", quantity)) if v is not None})
+                existing["status"] = "needed"
+            else:
+                gear.append({"item": item, "notes": (notes or "").strip()[:200] or None, "quantity": int(quantity or 1),
+                             "status": "needed", "added_at": datetime.now(timezone.utc).isoformat()})
+        elif action == "remove":
+            if not existing:
+                raise ValueError(f"{item} isn't on the gear list")
+            gear.remove(existing)
+        elif action == "mark_ordered":
+            if not existing:
+                raise ValueError(f"{item} isn't on the gear list")
+            existing["status"] = "ordered"
+            existing["ordered_at"] = datetime.now(timezone.utc).isoformat()
+        if action != "list":
+            self._save({"gear_list": gear[-25:]})
+        return {"gear_list": gear, "needed": [g["item"] for g in gear if g["status"] == "needed"]}
+
+
+DRAFT_PURPOSES = {
+    "hitting_partner": "Fancy a {sport} session {when}? I'm working on {focus} and would love a hitting partner.",
+    "availability": "I'm free for {sport} {when}. Does that work for you?",
+    "reschedule": "Something's come up. Could we move our {sport} session to {when}? Sorry for the shuffle.",
+    "coach_update": "Quick update: I'm training {sport} at {level} level, focusing on {focus}. "
+                    "Next session {when}. Any drills you'd add?",
+    "court_booking": "Hi, I'd like to book a {sport} court {when}, please. Is anything available?",
+}
+
+
+def _next_session_label(schedule: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not schedule or not schedule.get("days_of_week"):
+        return None
+    today = datetime.now(timezone.utc).strftime("%A")
+    days = schedule["days_of_week"]
+    order = WEEKDAYS[WEEKDAYS.index(today) + 1:] + WEEKDAYS[:WEEKDAYS.index(today) + 1]
+    day = next((d for d in order if d in days), days[0])
+    hhmm = (schedule.get("day_times") or {}).get(day) or schedule.get("time_utc")
+    return f"{day} at {hhmm} UTC"
+
+
+def recent_sessions(user_id: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Latest live sets and uploads, newest first, summarised."""
+    db = db_mongo.get_db()
+    rows: List[Dict[str, Any]] = []
+    if db is not None:
+        try:
+            rows = list(db["android_sessions"].find({"user_id": user_id, "status": "COMPLETED"},
+                                                    {"_id": 0, "telemetry": 0}).sort("updated_at", -1).limit(limit))
+        except Exception:
+            rows = []
+    out = []
+    for r in rows:
+        log = r.get("rep_log") or []
+        out.append({"session_id": r.get("session_id"), "source": r.get("source", "upload"),
+                    "stroke_type": r.get("stroke_type"), "overall_score": r.get("overall_score"),
+                    "primary_flaw": r.get("primary_flaw"), "updated_at": r.get("updated_at"),
+                    "adaptation": (r.get("adaptation") or {}).get("action"),
+                    "reps": len(log), "counted_reps": sum(1 for x in log if x.get("rep_counted")),
+                    "avg_impact_elbow_deg": round(sum(x["phase_angles"]["impact_elbow_deg"] for x in log) / len(log), 1)
+                    if log else None,
+                    "pro_match": next((x["pro_match"] for x in log if x.get("pro_match")), None)})
+    return out
+
+
+def fetch_weather(lat: float, lng: float) -> Dict[str, Any]:
+    """Next 6 hours from Open-Meteo (free, no key). Returns {"available": False} on any failure."""
+    try:
+        res = requests.get("https://api.open-meteo.com/v1/forecast", timeout=4, params={
+            "latitude": round(lat, 3), "longitude": round(lng, 3), "timezone": "UTC", "forecast_days": 1,
+            "hourly": "precipitation_probability,wind_speed_10m,temperature_2m"})
+        res.raise_for_status()
+        hourly = res.json()["hourly"]
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00")
+        start = next((i for i, t in enumerate(hourly["time"]) if t >= now), 0)
+        window = slice(start, start + 6)
+        rain = [v for v in hourly["precipitation_probability"][window] if v is not None]
+        wind = [v for v in hourly["wind_speed_10m"][window] if v is not None]
+        temp = [v for v in hourly["temperature_2m"][window] if v is not None]
+        return {"available": True, "source": "open-meteo", "hours": len(rain),
+                "max_rain_probability_pct": max(rain) if rain else None,
+                "max_wind_kmh": max(wind) if wind else None,
+                "temp_c_range": [min(temp), max(temp)] if temp else None}
+    except Exception as exc:
+        logger.info("Weather lookup failed: %s", exc)
+        return {"available": False, "source": "open-meteo"}
+
+
+def play_call(sport: Optional[str], weather: Dict[str, Any], courts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    indoor = next((c for c in courts if c.get("indoor") and (not sport or sport in (c.get("sports") or []))), None)
+    outdoor = next((c for c in courts if c.get("outdoor") and (not sport or sport in (c.get("sports") or []))), None)
+    if sport == "badminton":
+        return {"decision": "play_indoor", "venue": (indoor or {}).get("name"),
+                "reason": "Badminton is an indoor game: wind moves the shuttle, so book a hall."}
+    if not weather.get("available"):
+        return {"decision": "check_forecast", "venue": (indoor or outdoor or {}).get("name"),
+                "reason": "No forecast right now; pick an indoor court to be safe."}
+    rain, wind = weather.get("max_rain_probability_pct") or 0, weather.get("max_wind_kmh") or 0
+    if rain >= 50 or wind >= 30:
+        why = f"{rain}% chance of rain" if rain >= 50 else f"{wind:.0f} km/h wind"
+        return {"decision": "play_indoor" if indoor else "postpone", "venue": (indoor or {}).get("name"),
+                "reason": f"{why} in the next few hours, so " + ("move indoors." if indoor else "postpone the outdoor session.")}
+    return {"decision": "play_outdoor", "venue": (outdoor or indoor or {}).get("name"),
+            "reason": f"Dry enough ({rain}% rain) and calm ({wind:.0f} km/h): good to play outside."}
 
 
 TOOL_IMPLEMENTATIONS: Dict[str, Callable[..., Dict[str, Any]]] = {
     name: getattr(TheaToolbox, name) for name in (
-        "set_sport_and_goals", "set_athlete_level_and_generate_plan", "update_lesson_progress",
-        "assign_custom_drill", "update_training_schedule", "find_nearby_courts", "set_skill_focus",
+        "get_full_athlete_status", "set_sport_and_goals", "set_athlete_level_and_generate_plan",
+        "update_lesson_progress", "assign_custom_drill", "update_training_schedule",
+        "find_nearby_courts_and_weather", "draft_partner_or_coach_message", "manage_gear_reorder_list",
+        "set_skill_focus",
     )
 }
+# Older tool names still accepted from clients/models that learned them.
+TOOL_ALIASES = {"find_nearby_courts": "find_nearby_courts_and_weather"}
+
+ALL_SKILL_IDS = sorted({s.id for sp in sports_config.SPORTS_CATALOG.values() for s in sp.skills})
 
 TOOL_DECLARATIONS: List[Dict[str, Any]] = [
+    {"name": "get_full_athlete_status",
+     "description": "Read the athlete's full state: profile, plan progress, active lesson, schedule, assigned drills, "
+                    "gear list, recent live sets and uploads (reps, scores, pro match) and heart-rate trend. Call it "
+                    "before answering questions about how they're doing.",
+     "parameters_json_schema": {"type": "object", "properties": {}}},
     {"name": "set_sport_and_goals",
-     "description": "Set or switch the athlete's sport, their motivation (why they train) and training intensity. "
-                    "Switching sport resets the skill focus and builds a starter lesson plan.",
+     "description": "Set or switch the athlete's sport, skill focus, motivation (why they train) and intensity. "
+                    "Switching sport or skill focus rebuilds the lesson plan.",
      "parameters_json_schema": {"type": "object", "properties": {
          "sport": {"type": "string", "enum": list(sports_config.SPORTS_CATALOG)},
+         "skill_focus": {"type": "string", "enum": ALL_SKILL_IDS},
          "motivation_why": {"type": "string", "description": "The athlete's reason for training, in their words"},
          "intensity": {"type": "string", "enum": list(db_mongo.INTENSITIES)},
      }, "required": ["sport"]}},
@@ -392,11 +594,14 @@ TOOL_DECLARATIONS: List[Dict[str, Any]] = [
          "status": {"type": "string", "enum": list(db_mongo.NODE_STATUSES)},
      }, "required": ["node_id", "status"]}},
     {"name": "assign_custom_drill",
-     "description": "Assign a custom drill targeting the athlete's current flaw or request.",
+     "description": "Assign a drill to the athlete's Home screen and the head of their Live mode queue. stroke_type "
+                    "sets which stroke Live mode counts; sequence makes a combo (e.g. clear then lunge).",
      "parameters_json_schema": {"type": "object", "properties": {
          "title": {"type": "string"}, "instruction": {"type": "string"},
          "target_reps": {"type": "integer", "minimum": 1, "maximum": 500},
          "focus_cue": {"type": "string"},
+         "stroke_type": {"type": "string", "enum": sorted(kinematics_engine.SKILL_TO_STROKE)},
+         "sequence": {"type": "array", "items": {"type": "string", "enum": sorted(kinematics_engine.SKILL_TO_STROKE)}},
      }, "required": ["title", "instruction", "target_reps", "focus_cue"]}},
     {"name": "update_training_schedule",
      "description": "Set the weekly training days and reminder time. Convert 'N times a week' into N concrete, "
@@ -411,6 +616,7 @@ TOOL_DECLARATIONS: List[Dict[str, Any]] = [
                  "day": {"type": "string", "enum": WEEKDAYS},
                  "time_utc": {"type": "string", "description": "HH:MM 24h UTC"},
              }, "required": ["day", "time_utc"]}},
+         "duration_min": {"type": "integer", "minimum": 15, "maximum": 240},
      }}},
     {"name": "set_skill_focus",
      "description": "Record what the athlete wants to focus on (e.g. 'backhand net clearance'). Pass skill_id when "
@@ -420,11 +626,29 @@ TOOL_DECLARATIONS: List[Dict[str, Any]] = [
          "skill_id": {"type": "string", "enum": sorted({s.id for sp in sports_config.SPORTS_CATALOG.values()
                                                         for s in sp.skills})},
      }, "required": ["focus"]}},
-    {"name": "find_nearby_courts",
-     "description": "Find courts near a location using MongoDB $nearSphere over the facilities collection.",
+    {"name": "find_nearby_courts_and_weather",
+     "description": "Find London courts near a location (MongoDB $nearSphere on facilities) with indoor/outdoor "
+                    "options and a play / move indoors / postpone call from the live forecast.",
      "parameters_json_schema": {"type": "object", "properties": {
          "lat": {"type": "number"}, "lng": {"type": "number"},
-     }, "required": ["lat", "lng"]}},
+         "sport": {"type": "string", "enum": list(sports_config.SPORTS_CATALOG)},
+     }}},
+    {"name": "draft_partner_or_coach_message",
+     "description": "Draft a ready-to-send WhatsApp message (hitting partner invite, availability, reschedule, coach "
+                    "update or court booking request). It's saved as a draft; Saint sends it only after approval.",
+     "parameters_json_schema": {"type": "object", "properties": {
+         "purpose": {"type": "string", "enum": sorted(DRAFT_PURPOSES)},
+         "partner_name": {"type": "string"}, "proposed_time": {"type": "string"},
+         "tone": {"type": "string", "enum": ["friendly", "formal", "brief"]},
+     }, "required": ["purpose"]}},
+    {"name": "manage_gear_reorder_list",
+     "description": "Keep the athlete's gear reorder list: restrings (with tension notes), shuttle tubes, overgrips, "
+                    "shoes. Never places an order.",
+     "parameters_json_schema": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["add", "remove", "mark_ordered", "list"]},
+         "item_name": {"type": "string"}, "notes": {"type": "string"},
+         "quantity": {"type": "integer", "minimum": 1, "maximum": 50},
+     }, "required": ["action"]}},
 ]
 
 
@@ -474,8 +698,11 @@ def system_instruction(memory: Dict[str, Any], hr: Optional[Dict[str, Any]], cha
         "- Only cite biomechanics from recent_flaws and heart-rate numbers from the stats below; never invent measurements.\n"
         "- No sport or plan in memory yet: greet them warmly as Thea and ask their sport, level and goal. Otherwise "
         "point them to their active lesson (the curriculum node with status active) as the next step.\n"
-        "- You can't book courts, check weather or place orders yourself: offer to draft the booking request, "
-        "partner message or reorder for Saint to send with their approval, and never say it's done.\n"
+        "- Use get_full_athlete_status before judging progress. Court + weather questions -> "
+        "find_nearby_courts_and_weather. Messages to partners/coaches/venues -> draft_partner_or_coach_message "
+        "(a draft only). Kit -> manage_gear_reorder_list. Drills -> assign_custom_drill with stroke_type so Live counts it.\n"
+        "- You don't place bookings or orders yourself: drafts go to Saint for the athlete's approval, so never say "
+        "a booking or order is done.\n"
         f"- Location unknown for court search: use central London ({DEFAULT_LAT}, {DEFAULT_LNG}).\n"
         f"- {CHANNEL_STYLE[channel]}\n"
         f"Today (UTC): {datetime.now(timezone.utc).strftime('%A %Y-%m-%d')}\n"
@@ -597,8 +824,22 @@ def plan_fallback_calls(message: str, memory: Dict[str, Any]) -> List[Tuple[str,
             else:
                 args["time_utc"] = f"{clock.group(4)}:{clock.group(5)}"
         calls.append(("update_training_schedule", args))
-    if re.search(r"\bcourts?\b|\bnear(by)?\b|where (can|should) i (play|train)", text):
-        calls.append(("find_nearby_courts", {"lat": DEFAULT_LAT, "lng": DEFAULT_LNG}))
+    if re.search(r"\bcourts?\b|\bnear(by)?\b|where (can|should) i (play|train)|\bweather\b|\brain\b", text):
+        calls.append(("find_nearby_courts_and_weather", {"lat": DEFAULT_LAT, "lng": DEFAULT_LNG}))
+    if re.search(r"\b(how am i doing|how did|my progress|status|last (live )?set|my stats)\b", text):
+        calls.append(("get_full_athlete_status", {}))
+    draft = re.search(r"\b(draft|write|message|text)\b.*\b(partner|coach|reschedul|book)", text)
+    if draft:
+        purpose = ("coach_update" if "coach" in text else "reschedule" if "reschedul" in text
+                   else "court_booking" if "book" in text else "hitting_partner")
+        name = re.search(r"\b(?:to|for) ([A-Z][a-z]+)\b", message)
+        calls.append(("draft_partner_or_coach_message", {"purpose": purpose, **({"partner_name": name.group(1)} if name else {})}))
+    gear = re.search(r"\b(?:add|reorder|order|need|buy)\b.*?\b(restring|strings?|overgrips?|grips?|shuttles?|shuttlecocks?|"
+                     r"tubes? of shuttles|balls|shoes|racket)\b", text)
+    if gear:
+        calls.append(("manage_gear_reorder_list", {"action": "add", "item_name": gear.group(1)}))
+    elif re.search(r"\bgear( list)?\b", text):
+        calls.append(("manage_gear_reorder_list", {"action": "list"}))
     return calls
 
 
@@ -619,6 +860,25 @@ def fallback_reply(toolbox: TheaToolbox) -> str:
     if "courts" in toolbox.widgets and toolbox.widgets["courts"]["courts"]:
         court = toolbox.widgets["courts"]["courts"][0]
         parts.append(f"Closest court: {court['name']} ({court['distance_km']} km).")
+        call = toolbox.widgets["courts"].get("play_call") or {}
+        if call.get("reason"):
+            parts.append(call["reason"])
+    if "draft_partner_or_coach_message" in toolbox.actions:
+        draft = (m.get("message_drafts") or [{}])[-1]
+        parts.append(f"Here's a draft for you to approve: \"{draft.get('text')}\"")
+    if "manage_gear_reorder_list" in toolbox.actions:
+        needed = [g["item"] for g in m.get("gear_list") or [] if g.get("status") == "needed"]
+        parts.append(f"Gear list: {', '.join(needed) or 'nothing outstanding'}.")
+    if "get_full_athlete_status" in toolbox.actions and not parts:
+        nodes = m.get("curriculum_nodes") or []
+        done = sum(n.get("status") == "completed" for n in nodes)
+        active = next((n for n in nodes if n.get("status") == "active"), None)
+        latest = (recent_sessions(toolbox.user_id, 1) or [None])[0]
+        parts.append(f"You've completed {done} of {len(nodes)} lessons" +
+                     (f" and you're on {active['title']}." if active else "."))
+        if latest:
+            parts.append(f"Last {latest['source']} session scored {latest['overall_score']}" +
+                         (f" with {latest['counted_reps']}/{latest['reps']} reps counted." if latest['reps'] else "."))
     if parts:
         return " ".join(parts)
     active = next((n for n in m.get("curriculum_nodes") or [] if n.get("status") == "active"), None)

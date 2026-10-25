@@ -29,10 +29,22 @@ from threading import Lock
 import importlib.util
 import logging
 
+try:
+    if __package__:
+        from . import kinematics_engine as kin
+    else:
+        import kinematics_engine as kin
+except ImportError:  # pragma: no cover - script execution from backend/
+    import kinematics_engine as kin
+
 logger = logging.getLogger(__name__)
 mp = None
 _MP_LOCK = Lock()
 REQUIRED_LANDMARKS = (0, 11, 12, 13, 14, 16, 23, 24, 26, 28)
+# Same body check for a left-handed player (hitting arm and leg on the left).
+REQUIRED_LANDMARKS_LEFT = (0, 11, 12, 13, 15, 23, 24, 25, 27)
+# Hitting side: shoulder, elbow, wrist, hip, knee, ankle, then the non-hitting shoulder and hip.
+SIDE_JOINTS = {"right": (12, 14, 16, 24, 26, 28, 11, 23), "left": (11, 13, 15, 23, 25, 27, 12, 24)}
 MODEL_FILENAME = "pose_landmarker_full.task"
 
 
@@ -137,23 +149,26 @@ def _pose_unavailable(status: str, frames_scanned: int = 0) -> Dict[str, Any]:
             "contact_selection": "unavailable", "valid_pose_frames": 0}
 
 
-def _angles_from_landmarks(world: Any, image: Any) -> Dict[str, float]:
+def _angles_from_landmarks(world: Any, image: Any, side: str = "right") -> Dict[str, float]:
+    """Contract angles for the hitting side. Keys keep their historical `right_*` names (hitting arm)."""
+    sh, el, wr, hp, kn, an, osh, ohp = SIDE_JOINTS[side]
+
     def angle(a, b, c):
         return compute_angle_3d(*(_extract_landmark_3d(world, i) for i in (a, b, c)))
-    return {"right_elbow_contact_deg": angle(12, 14, 16),
-            "right_shoulder_abduction_deg": angle(24, 12, 14),
-            "trunk_arch_deg": angle(12, 24, 26),
-            "right_knee_flexion_deg": angle(24, 26, 28),
-            "left_arm_balance_deg": angle(23, 11, 13),
+    return {"right_elbow_contact_deg": angle(sh, el, wr),
+            "right_shoulder_abduction_deg": angle(hp, sh, el),
+            "trunk_arch_deg": angle(sh, hp, kn),
+            "right_knee_flexion_deg": angle(hp, kn, an),
+            "left_arm_balance_deg": angle(ohp, osh, 13 if side == "right" else 14),  # non-hitting arm
             # Height remains an image-space feature for the existing vector contract.
-            "contact_height_norm": round(1.0 - float(image[16].y), 4)}
+            "contact_height_norm": round(1.0 - float(image[wr].y), 4)}
 
 
-def _reliable_full_body_pose(image: Any, world: Any) -> bool:
+def _reliable_full_body_pose(image: Any, world: Any, side: str = "right") -> bool:
     """Every required landmark is confident, finite and inside the frame (any stroke, not only overhead)."""
     if len(image) < 33 or len(world) < 33:
         return False
-    for idx in REQUIRED_LANDMARKS:
+    for idx in (REQUIRED_LANDMARKS if side == "right" else REQUIRED_LANDMARKS_LEFT):
         landmark = image[idx]
         confidence = (getattr(landmark, "visibility", None), getattr(landmark, "presence", None))
         if any(value is None or not math.isfinite(value) or value < 0.5 for value in confidence):
@@ -165,21 +180,31 @@ def _reliable_full_body_pose(image: Any, world: Any) -> bool:
     return True
 
 
-def _is_overhead(image: Any) -> bool:
-    return image[16].y < min(image[0].y, image[12].y) - 0.02
+def _is_overhead(image: Any, side: str = "right") -> bool:
+    sh, _, wr = SIDE_JOINTS[side][:3]
+    return image[wr].y < min(image[0].y, image[sh].y) - 0.02
 
 
-def _reliable_overhead_pose(image: Any, world: Any) -> bool:
-    return _reliable_full_body_pose(image, world) and _is_overhead(image)
+def _reliable_overhead_pose(image: Any, world: Any, side: str = "right") -> bool:
+    return _reliable_full_body_pose(image, world, side) and _is_overhead(image, side)
 
 
-def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
-    """Use Tasks VIDEO mode and world landmarks to measure a single right-handed player.
+def _landmark_rows(image: Any, world: Any) -> Tuple[List[List[float]], List[List[float]]]:
+    img = [[float(p.x), float(p.y), float(getattr(p, "z", 0.0) or 0.0), float(getattr(p, "visibility", 0.0) or 0.0)]
+           for p in image]
+    wld = [[float(p.x), float(p.y), float(p.z)] for p in world]
+    return img, wld
 
-    Contact *candidate*, best first: the highest reliable overhead wrist frame; otherwise (forehand,
-    drive, serve or an incomplete swing) the fastest right-wrist frame with the full body visible.
-    Frames with a second person are skipped unless they dominate the clip. This does not detect a
-    racket, ball/shuttle, or actual impact.
+
+def extract_pose_from_video(video_path: str, sport: Optional[str] = None,
+                            target_stroke: Optional[str] = None) -> Dict[str, Any]:
+    """Use Tasks VIDEO mode and world landmarks to measure a single player (either hand).
+
+    Best first: (1) the RepTracker segments complete reps (Preparation -> Loading -> Impact ->
+    Follow-Through) and the best rep's impact frame gives the angles, for any stroke; (2) without a
+    complete rep, the highest reliable overhead wrist frame; (3) otherwise the fastest full-body wrist
+    frame. Frames with a second person are skipped unless they dominate. No racket, ball/shuttle or
+    actual impact is detected: "impact" is a contact proxy.
     """
     if not video_path or not os.path.isfile(video_path):
         return _pose_unavailable("fallback_no_video")
@@ -195,14 +220,9 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
         cap.release()
         return _pose_unavailable("fallback_unreadable_video")
     frames_scanned = 0
-    valid_frames = 0
     ambiguous_frames = 0
-    best = None
-    best_y = float("inf")
-    swing_best = None  # fastest right wrist among full-body frames (non-overhead strokes)
-    swing_speed = -1.0
-    full_body_frames = 0
-    prev_wrist: Optional[Tuple[float, float, int]] = None
+    aspect = 0.75
+    single: List[Tuple[int, int, Any, Any]] = []  # (frame_idx, timestamp_ms, image landmarks, world landmarks)
     fps = float(cap.get(cv2.CAP_PROP_FPS))
     fps_estimated = not math.isfinite(fps) or fps <= 0
     if fps_estimated:
@@ -223,6 +243,8 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
                     break
                 frame_idx = frames_scanned
                 frames_scanned += 1
+                if frame_idx == 0 and getattr(frame, "shape", None) is not None and frame.shape[0]:
+                    aspect = frame.shape[1] / frame.shape[0]
                 # Prefer decoder presentation time, retaining strict increase for duplicate timestamps.
                 presentation_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC))
                 estimated_ms = round(frame_idx * 1000.0 / fps)
@@ -235,66 +257,85 @@ def extract_pose_from_video(video_path: str) -> Dict[str, Any]:
                 result = landmarker.detect_for_video(image, timestamp)
                 if len(result.pose_landmarks) > 1:
                     ambiguous_frames += 1
-                    prev_wrist = None
                     continue
                 if len(result.pose_landmarks) != 1 or len(result.pose_world_landmarks) != 1:
-                    prev_wrist = None
                     continue
-                normalized, world = result.pose_landmarks[0], result.pose_world_landmarks[0]
-                if not _reliable_full_body_pose(normalized, world):
-                    prev_wrist = None
-                    continue
-                try:
-                    raw = _angles_from_landmarks(world, normalized)
-                except ValueError:
-                    continue
-                full_body_frames += 1
-                wrist = (float(normalized[16].x), float(normalized[16].y), timestamp)
-                if prev_wrist is not None and timestamp > prev_wrist[2]:
-                    speed = math.dist(wrist[:2], prev_wrist[:2]) / ((timestamp - prev_wrist[2]) / 1000.0)
-                    if speed > swing_speed:
-                        swing_speed = speed
-                        swing_best = (raw, frame_idx, timestamp,
-                                      min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
-                prev_wrist = wrist
-                if swing_best is None:
-                    swing_best = (raw, frame_idx, timestamp, min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
-                if not _is_overhead(normalized):
-                    continue
-                valid_frames += 1
-                if normalized[16].y < best_y:
-                    best_y = normalized[16].y
-                    best = (raw, frame_idx, timestamp,
-                            min(normalized[i].visibility for i in REQUIRED_LANDMARKS))
+                single.append((frame_idx, timestamp, result.pose_landmarks[0], result.pose_world_landmarks[0]))
     except (ValueError, RuntimeError, OSError):
         logger.exception("Pose Landmarker inference failed")
         return _pose_unavailable("pose_inference_failed", frames_scanned)
     finally:
         cap.release()
 
+    rows = [(idx, ts) + _landmark_rows(img, wld) for idx, ts, img, wld in single]
+    side = kin.detect_side([r[2] for r in rows], aspect)
+    visibility_ids = REQUIRED_LANDMARKS if side == "right" else REQUIRED_LANDMARKS_LEFT
+    full_body = [(idx, ts, img, wld) for idx, ts, img, wld in single if _reliable_full_body_pose(img, wld, side)]
     warnings = ["Monocular 3D pose estimate; actual racket impact is not detected.",
-                "Right-handed single-player analysis."]
+                f"{side.title()}-handed single-player analysis (hitting side detected from wrist travel)."]
     # No identity tracking: frames with a second person were skipped. Refuse only if they dominate.
     if ambiguous_frames:
-        if ambiguous_frames >= full_body_frames:
+        if ambiguous_frames >= len(full_body):
             return _pose_unavailable("multiple_players_detected", frames_scanned)
         warnings.append(f"Skipped {ambiguous_frames} frames with more than one person in view.")
-    if best is not None:
-        raw, peak_idx, timestamp, visibility = best
-        status, selection, overhead = "detected", "highest_visible_overhead_wrist_proxy", True
-    elif swing_best is not None:
-        raw, peak_idx, timestamp, visibility = swing_best
-        status, selection, overhead = "detected_no_overhead_contact", "fastest_right_wrist_full_body_frame", False
-        warnings.append("No overhead contact was visible; angles are from the fastest full-body swing frame.")
+
+    by_ts = {ts: (idx, img, wld) for idx, ts, img, wld in single}
+    analysis = kin.analyse_frames([(ts, img_rows, wld_rows) for _, ts, img_rows, wld_rows in rows],
+                                  sport, target_stroke, aspect)
+    reps: List[Any] = analysis["reps"]
+    rep_payload: Optional[Dict[str, Any]] = None
+    if reps:
+        best_rep = max(reps, key=lambda r: (r.stroke_matches_target, r.quality_score))
+        peak_idx, normalized, world = by_ts[best_rep.impact_ms]
+        timestamp = best_rep.impact_ms
+        raw = _angles_from_landmarks(world, normalized, side)
+        overhead = best_rep.detected_stroke in kin.OVERHEAD_STROKES
+        status, selection = "detected", "rep_tracker_impact"
+        visibility = min(normalized[i].visibility for i in visibility_ids)
+        valid = len(full_body)
+        rep_payload = {
+            "reps": [r.to_dict() for r in reps], "rep_count": len(reps), "best_rep_index": best_rep.rep_index,
+            "detected_stroke": best_rep.detected_stroke, "target_stroke": target_stroke,
+            "quality_score": best_rep.quality_score, "primary_deviation": best_rep.primary_deviation,
+            "session_analysis": analysis["session"],
+            "kinetic_phases": [{"phase_name": k.phase, "timestamp_ms": k.t_ms, "joint_angles": k.angles,
+                                "frame_index": by_ts[k.t_ms][0] if k.t_ms in by_ts else None}
+                               for k in best_rep.keyframes],
+        }
     else:
-        return _pose_unavailable("fallback_no_reliable_pose", frames_scanned)
+        overhead_frames = [(idx, ts, img, wld) for idx, ts, img, wld in full_body if _is_overhead(img, side)]
+        wrist = SIDE_JOINTS[side][2]
+        if overhead_frames:
+            peak_idx, timestamp, normalized, world = min(overhead_frames, key=lambda f: f[2][wrist].y)
+            status, selection, overhead = "detected", "highest_visible_overhead_wrist_proxy", True
+            valid = len(overhead_frames)
+        elif full_body:
+            fastest, best_speed = full_body[0], -1.0
+            for prev, cur in zip(full_body, full_body[1:]):
+                if cur[1] > prev[1] and cur[0] == prev[0] + 1:
+                    speed = math.dist((cur[2][wrist].x, cur[2][wrist].y), (prev[2][wrist].x, prev[2][wrist].y)) / (
+                        (cur[1] - prev[1]) / 1000.0)
+                    if speed > best_speed:
+                        fastest, best_speed = cur, speed
+            peak_idx, timestamp, normalized, world = fastest
+            status, selection, overhead = "detected_no_overhead_contact", f"fastest_{side}_wrist_full_body_frame", False
+            warnings.append("No overhead contact was visible; angles are from the fastest full-body swing frame.")
+            valid = len(full_body)
+        else:
+            return _pose_unavailable("fallback_no_reliable_pose", frames_scanned)
+        try:
+            raw = _angles_from_landmarks(world, normalized, side)
+        except ValueError:
+            return _pose_unavailable("fallback_no_reliable_pose", frames_scanned)
+        visibility = min(normalized[i].visibility for i in visibility_ids)
     return {"status": status, "used_fallback": False, "overhead_contact_detected": overhead,
-            "frames_scanned": frames_scanned, "valid_pose_frames": valid_frames if overhead else full_body_frames,
+            "handedness": side, "frames_scanned": frames_scanned, "valid_pose_frames": valid,
             "peak_contact_frame": peak_idx, "peak_contact_timestamp_ms": timestamp,
             "raw_angles": raw, **raw, "pose_vector": build_pose_vector(raw),
             "engine": "mediapipe_tasks_pose_landmarker", "coordinate_space": "estimated_world_meters",
             "contact_selection": selection,
             "min_landmark_visibility": round(visibility, 4), "fps_estimated": fps_estimated,
+            "rep_analysis": rep_payload,
             "warnings": warnings}
 
 

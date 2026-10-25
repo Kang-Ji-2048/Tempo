@@ -1,0 +1,78 @@
+{
+  "courts": [
+    {
+      "facility_id": "fac_islington_tennis_centre",
+      "name": "Islington Tennis Centre",
+      "postcode": "N7 9RQ",
+      "sports": [
+        "tennis"
+      ],
+      "indoor": true,
+      "outdoor": true,
+      "distance_km": 3.24
+    },
+    {
+      "facility_id": "fac_regents_park_tennis",
+      "name": "Regent's Park Tennis Centre",
+      "postcode": "NW1 4NU",
+      "sports": [
+        "tennis"
+      ],
+      "indoor": false,
+      "outdoor": true,
+      "distance_km": 3.8
+    },
+    {
+      "facility_id": "fac_lee_valley_hockey_tennis",
+      "name": "Lee Valley Hockey & Tennis Centre",
+      "postcode": "E20 3AB",
+      "sports": [
+        "tennis"
+      ],
+      "indoor": true,
+      "outdoor": true,
+      "distance_km": 6.35
+    },
+    {
+      "facility_id": "fac_paddington_rec",
+      "name": "Paddington Recreation Ground",
+      "postcode": "W9 1PD",
+      "sports": [
+        "tennis"
+      ],
+      "indoor": false,
+      "outdoor": true,
+      "distance_km": 6.49
+    },
+    {
+      "facility_id": "fac_westway_sports_centre",
+      "name": "Westway Sports & Fitness Centre",
+      "postcode": "W10 6RP",
+      "sports": [
+        "tennis",
+        "badminton"
+      ],
+      "indoor": true,
+      "outdoor": true,
+      "distance_km": 8.13
+    }
+  ],
+  "search_method": "mongodb_nearSphere_2dsphere",
+  "weather": {
+    "available": true,
+    "source": "open-meteo",
+    "hours": 6,
+    "max_rain_probability_pct": 0,
+    "max_wind_kmh": 29.5,
+    "temp_c_range": [
+      11.2,
+      13.4
+    ]
+  },
+  "play_call": {
+    "decision": "play_outdoor",
+    "venue": "Islington Tennis Centre",
+    "reason": "Dry enough (0% rain) and calm (30 km/h): good to play outside."
+  },
+  "booking_note": "Live prices and slots change: check the venue's booking page, or ask me to draft the booking request for Saint to send."
+}

@@ -105,7 +105,7 @@ def authenticate(headers, cookies=None):
             raise ValueError()
     except (KeyError, TypeError, ValueError):
         raise HTTPException(401, 'Credential expired or lacks an expiry date')
-    if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,127}', record['user_id']) or record.get('role', 'player') not in {'player', 'admin'}:
+    if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,127}', record['user_id']) or record.get('role', 'player') not in {'player', 'admin', 'saint'}:
         raise HTTPException(503, 'Invalid authentication record')
     return {'user_id': record['user_id'], 'role': record.get('role', 'player')}
 
@@ -119,6 +119,11 @@ def own(request, user_id):
     if identity['role'] != 'admin' and identity['user_id'] != user_id:
         raise HTTPException(403, 'This resource belongs to another player')
     return user_id
+
+
+def saint_may_call(path):
+    """A 'saint' credential acts for one player, and only on the Saint command routes."""
+    return path == '/command' or path.startswith('/api/v1/saint/')
 
 
 def event_visible(identity, event):
@@ -140,6 +145,7 @@ PUBLIC_PATHS = {
     '/api/v1/sports',
     # Authenticates itself (Bearer, shared secret or Twilio signature); Twilio can't send a Bearer token.
     '/api/v1/webhooks/whatsapp',
+    '/api/v1/webhooks/saint',
     '/api/v1/webhooks/saint-delivery-receipt',
 }
 
@@ -151,6 +157,8 @@ def install_auth(app):
         if path not in PUBLIC_PATHS:
             try:
                 request.state.identity = authenticate(request.headers, request.cookies)
+                if request.state.identity['role'] == 'saint' and not saint_may_call(path):
+                    raise HTTPException(403, 'Saint credentials only reach the Saint command routes')
                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} and not request.headers.get('authorization'):
                     origin = request.headers.get('origin')
                     if origin != str(request.base_url).rstrip('/'):

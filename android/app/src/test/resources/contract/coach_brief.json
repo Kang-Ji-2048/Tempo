@@ -1,0 +1,43 @@
+{
+  "user_id": "e24a1c30-0ce3-4cfc-a082-3704c3390cf7",
+  "brief_text": "Hi Thea [Tempo Sync | User: Contract | Sport: Tennis (Intermediate) | Active Node: One-Handed Backhand Contact #1/5 | Schedule: Mon/Wed/Sat 18:00].",
+  "thea_number": "447985791437",
+  "whatsapp_link": "https://wa.me/447985791437?text=Hi%20Thea%20%5BTempo%20Sync%20%7C%20User%3A%20Contract%20%7C%20Sport%3A%20Tennis%20%28Intermediate%29%20%7C%20Active%20Node%3A%20One-Handed%20Backhand%20Contact%20%231/5%20%7C%20Schedule%3A%20Mon/Wed/Sat%2018%3A00%5D.",
+  "status": {
+    "profile": {
+      "sport": "tennis",
+      "skill_focus": "one_hand_backhand",
+      "focus_note": null,
+      "level": "intermediate",
+      "motivation_why": "social_match_play",
+      "intensity": "regular",
+      "phone_number": null
+    },
+    "plan": {
+      "completed": 0,
+      "total": 5,
+      "active_lesson": {
+        "id": "tennis_01_one_handed_backhand_contact",
+        "title": "One-Handed Backhand Contact",
+        "attempts": null
+      }
+    },
+    "schedule": {
+      "days_of_week": [
+        "Monday",
+        "Wednesday",
+        "Saturday"
+      ],
+      "time_utc": "18:00",
+      "day_times": {},
+      "duration_min": 60,
+      "preferred_channel": "whatsapp",
+      "priming_lead_minutes": 30
+    },
+    "assigned_drills": [],
+    "gear_list": [],
+    "recent_flaws": [],
+    "recent_sessions": [],
+    "heart_rate": null
+  }
+}

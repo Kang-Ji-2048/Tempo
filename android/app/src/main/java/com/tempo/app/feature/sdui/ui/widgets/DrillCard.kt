@@ -35,6 +35,8 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -70,6 +72,10 @@ fun DrillCard(
     widget: DrillCardWidget,
     onAction: (WidgetAction) -> Unit,
     modifier: Modifier = Modifier,
+    /** "Start Live Coach (Real-Time)" for this drill; hidden when null. */
+    onStartLive: (() -> Unit)? = null,
+    /** "Upload Clip (Deep Frame Analysis)" for this drill; hidden when null. */
+    onUploadClip: (() -> Unit)? = null,
 ) {
     var reps by rememberSaveable(widget.key) { mutableIntStateOf(0) }
     var logged by rememberSaveable(widget.key) { mutableStateOf(false) }
@@ -99,6 +105,38 @@ fun DrillCard(
             StepButton(Icons.Rounded.Remove, "Remove rep", enabled = reps > 0 && !logged) { reps-- }
             RepRing(reps = reps, target = target, onTap = increment)
             StepButton(Icons.Rounded.Add, "Add rep", enabled = !logged, primary = true, onClick = increment)
+        }
+
+        if (onStartLive != null || onUploadClip != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                onStartLive?.let { start ->
+                    Button(
+                        onClick = start,
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentNeonVolt, contentColor = BackgroundOnyx),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Start Live Coach", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                            Text("Real-time", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+                onUploadClip?.let { upload ->
+                    OutlinedButton(
+                        onClick = upload,
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.6f)),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Upload Clip", fontWeight = FontWeight.Bold, color = AccentNeonVolt,
+                                style = MaterialTheme.typography.labelLarge)
+                            Text("Deep frame analysis", color = TextMuted, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
         }
 
         Button(

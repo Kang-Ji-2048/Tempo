@@ -75,6 +75,19 @@ interface TempoApi {
         @Body request: com.tempo.app.network.models.WhatsAppLinkRequestDto
     ): com.tempo.app.network.models.WhatsAppLinkResponseDto
 
+    @GET("api/v1/coach/brief/me")
+    suspend fun getCoachBrief(): com.tempo.app.network.models.CoachBriefDto
+
+    @GET("api/v1/coach/memory/version")
+    suspend fun getMemoryVersion(): com.tempo.app.network.models.MemoryVersionDto
+
+    @GET("api/v1/coach/courts")
+    suspend fun getNearbyCourts(
+        @retrofit2.http.Query("lat") lat: Double,
+        @retrofit2.http.Query("lng") lng: Double,
+        @retrofit2.http.Query("sport") sport: String? = null
+    ): com.tempo.app.network.models.CourtsResponseDto
+
     @GET("api/v1/coach/memory")
     suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto
 

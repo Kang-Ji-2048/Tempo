@@ -28,15 +28,22 @@ fun WidgetRenderer(
     onAction: (WidgetAction) -> Unit,
     modifier: Modifier = Modifier,
     onPathNodeClick: ((String) -> Unit)? = null,
+    /** Drill card actions: open Live mode or Capture bound to this drill (buttons hidden when null). */
+    onDrillLive: ((DrillCardWidget) -> Unit)? = null,
+    onDrillUpload: ((DrillCardWidget) -> Unit)? = null,
+    /** Only the SDUI debug screen shows unknown widgets; athletes never see error cards for them. */
+    showUnknown: Boolean = false,
 ) {
     when (widget) {
         is PathProgressWidget -> PathProgressCard(widget, modifier, onPathNodeClick?.let { open -> { node -> open(node.nodeId) } })
-        is DrillCardWidget -> DrillCard(widget, onAction, modifier)
+        is DrillCardWidget -> DrillCard(widget, onAction, modifier,
+            onStartLive = onDrillLive?.let { open -> { open(widget) } },
+            onUploadClip = onDrillUpload?.let { open -> { open(widget) } })
         is ConceptQuizWidget -> ConceptQuizCard(widget, onAction, modifier)
         is CheckInScheduleWidget -> CheckInScheduleCard(widget, onAction, modifier)
         is QuestionWidget -> QuestionCard(widget, onAction, modifier)
         is ChoiceWidget -> ChoiceCard(widget, onAction, modifier)
         is CapturePromptWidget -> CapturePromptCard(widget, onAction, modifier)
-        is UnknownWidget -> UnknownWidgetCard(widget, modifier)
+        is UnknownWidget -> if (showUnknown) UnknownWidgetCard(widget, modifier)
     }
 }

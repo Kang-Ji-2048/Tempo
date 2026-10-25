@@ -23,11 +23,24 @@ Saint uses the existing backend address and encrypted Tempo player credential. I
 
 All routes use the same Tempo bearer authentication and player ownership checks. Admins retain the existing explicit cross-player access policy.
 
+The Saint assistant gets its own `saint` credential (`python backend/manage_access.py issue --user <player> --role saint --token-file <private path>`). It acts for that one player and only reaches `/command` and `/api/v1/saint/*`; any other route returns 403. When it posts a decision, the action log records `approved_via: saint_relay`, meaning Saint relayed the player's chat reply and Tempo did not see the approval itself. App approvals record `approved_via: player`. A one-time approval link for the player is the planned step before any real payment.
+
 `backend/saint_commands.py::Action` is the source of truth for type, params, summary, requires_approval, idempotency key, owner and expiry. `backend/contracts/saint_action.schema.json` is generated from it. Kotlin wire DTOs preserve the params object; Android never executes or reinterprets venue instructions.
 
 Proposals are HMAC signed, expire after 15 minutes and require approval. The executor rejects modified/expired payloads and admits each key once through Mongo's unique `_id` (or an atomic process lock in the mock fallback). The adapter interface exposes `search()` and `book()`. Only MockVenueAdapter is installed. No real bookings, messages or payments can occur.
 
 Action states: `processing`, `declined`, `executed_mock`, `needs_review`. A provider exception produces `needs_review`; re-submission returns the existing result and never automatically calls the provider again. An ambiguous write failure fails closed. Action logs use `saint_action_log`; preferences use `saint_preferences`, both in the canonical database. No database connection means explicitly labelled volatile `in_memory_demo` storage, suitable only for this mock.
+
+## Events and tools
+
+Tempo pushes events Saint did not ask for (`backend/saint_events.py::Event` is the single schema: type, event_id, user, summary, suggested_command, an optional signed proposal, data, occurred_at). Events never carry side effects: Saint shows the attached proposal to the player and, after a yes, posts it to the decision endpoint like any other proposal. If it has expired, Saint sends `suggested_command` to `POST /command`.
+
+- `argon_verdict` fires from the analysis pipeline when the elbow check fails. It proposes an indoor court tomorrow at the player's preferred time, with the drill in the summary. A PASS sends nothing.
+- `court_slot_opened` is fired by `POST /api/v1/saint/events/mock-slot-opened/{user}`, standing in for a venue provider's availability feed. It proposes 10:00 next Saturday in the saved home area.
+
+Events POST to `SAINT_WEBHOOK_URL` with `X-Tempo-Signature: sha256=<HMAC of the raw body with TEMPO_WEBHOOK_SECRET>`. Without a URL they are staged. Every event is logged in `saint_event_log` with its delivery status.
+
+`GET /api/v1/saint/tools` returns the OpenAPI document limited to the routes a `saint` credential may call, for Saint to load as tools.
 
 ## Run
 

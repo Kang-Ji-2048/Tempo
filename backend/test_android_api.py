@@ -125,7 +125,9 @@ class AndroidBridgeTests(unittest.TestCase):
         record = self.client.get('/api/v1/sessions/' + response.json()['session_id']).json()
         self.assertEqual(record['status'], 'FAILED')
         self.assertEqual(record['error_code'], 422)
-        self.assertIn('multiple_players_detected', record['error_message'])
+        # Machine detail is kept for diagnostics; the app only shows the human sentence.
+        self.assertEqual(record['error_detail']['pose_status'], 'multiple_players_detected')
+        self.assertFalse(record['error_message'].startswith('{'))
 
     def test_model_missing_error_is_visible(self):
         self.analyze.side_effect = HTTPException(status_code=503, detail='Pose engine unavailable')

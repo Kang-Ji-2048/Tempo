@@ -380,6 +380,15 @@ async def run_biomechanical_analysis(
                      "the lesson needs one, and suggest filming the full swing side-on.\n")
     else:
         pose_note = "POSE: overhead contact candidate (highest reliable wrist frame).\n"
+    reps = meta.get("rep_analysis") or {}
+    if reps:
+        session = reps.get("session_analysis") or {}
+        pose_note += (
+            f"REP ANALYSIS: {reps.get('rep_count')} complete reps, best rep #{reps.get('best_rep_index')} detected as "
+            f"{reps.get('detected_stroke')} (target {reps.get('target_stroke') or 'any'}), quality "
+            f"{reps.get('quality_score')}/100, primary deviation: {reps.get('primary_deviation') or 'none'}. "
+            f"Phase angles: {json.dumps([{p['phase_name']: p['joint_angles']} for p in reps.get('kinetic_phases', [])])}. "
+            f"Drift: {(session.get('drift') or {}).get('message') or 'none'}. Coach this stroke, not a generic overhead.\n")
     measured_data_block = (
         pose_note +
         f"MEASURED DATA:\n"

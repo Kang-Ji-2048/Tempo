@@ -56,6 +56,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.tempo.app.feature.schedule.ScheduleViewModel
+import com.tempo.app.feature.thea.CourtFinderCard
 import com.tempo.app.ui.theme.AccentNeonVolt
 import com.tempo.app.ui.theme.BackgroundOnyx
 import com.tempo.app.ui.theme.CardBorderSubtle
@@ -422,6 +423,9 @@ fun ScheduleScreen(
                 }
             }
         }
+
+        // Court finder ($nearSphere + forecast) and one-tap hand-off to Thea on WhatsApp.
+        CourtFinderCard()
     }
 }
 

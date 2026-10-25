@@ -240,7 +240,7 @@ def plan(user: str, text: str, prefs: Preferences, clock=None):
             'planner':'deterministic_demo','demo':True}
 
 
-def execute(decision: Decision):
+def execute(decision: Decision, approved_via: Literal['player', 'saint_relay'] = 'player'):
     action=decision.proposal.action
     if not hmac.compare_digest(decision.proposal.signature, sign(action)):
         raise HTTPException(400, 'Proposal was changed or server restarted. Request a fresh proposal.')
@@ -253,7 +253,7 @@ def execute(decision: Decision):
     if action.expires_at.tzinfo is None or action.expires_at <= now() or action.params.starts_at <= now():
         raise HTTPException(410,'Proposal expired. Request a fresh proposal.')
     record={'user':action.user,'action':action.model_dump(mode='json'),'approved':decision.approved,
-            'status':'processing' if decision.approved else 'declined','created_at':now().isoformat(),'demo':True}
+            'status':'processing' if decision.approved else 'declined','approved_via':approved_via,'created_at':now().isoformat(),'demo':True}
     if not claim(key,record):
         winner=get_record('saint_action_log',key)
         if winner and winner['approved'] == decision.approved: return winner
@@ -291,7 +291,9 @@ async def save_preferences(user: str,body: Preferences,request: Request):
 @router.post('/api/v1/saint/actions/decision')
 async def decide(body: Decision,request: Request):
     own(request,body.proposal.action.user)
-    return await run_in_threadpool(execute,body)
+    # A Saint credential relays the player's chat reply; the log records that Tempo did not see the approval itself.
+    via='saint_relay' if principal(request)['role']=='saint' else 'player'
+    return await run_in_threadpool(execute,body,via)
 
 @router.get('/api/v1/saint/actions/{key}')
 async def status(key: str,request: Request):

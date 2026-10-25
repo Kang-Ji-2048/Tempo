@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,9 +84,16 @@ object LessonRoutes {
 
     fun capture(nodeId: String, title: String, framing: String) =
         "lesson_capture?lesson_node=${Uri.encode(nodeId)}&lesson_title=${Uri.encode(title)}&framing=${Uri.encode(framing)}"
+
+    /** Live mode bound to a lesson node and/or drill (the server counts reps for that drill). */
+    const val LIVE_PATTERN = "live_drill?node_id={node_id}&drill_id={drill_id}"
+
+    fun live(nodeId: String?, drillId: String?): String =
+        "live_drill?" + listOfNotNull(nodeId?.let { "node_id=${Uri.encode(it)}" }, drillId?.let { "drill_id=${Uri.encode(it)}" })
+            .joinToString("&")
 }
 
-data class LessonDrill(val title: String, val instruction: String, val targetReps: Int, val focusCue: String)
+data class LessonDrill(val id: String?, val title: String, val instruction: String, val targetReps: Int, val focusCue: String)
 
 data class LessonNodeUi(
     val id: String,
@@ -172,7 +180,7 @@ class LessonDetailViewModel @Inject constructor(
 
     private fun parseNode(obj: JsonObject): LessonNodeUi {
         val drill = (obj["drill_spec"] as? JsonObject)?.let {
-            LessonDrill(it.text("title").orEmpty(), it.text("instruction").orEmpty(),
+            LessonDrill(it.text("drill_id"), it.text("title").orEmpty(), it.text("instruction").orEmpty(),
                 (it["target_reps"] as? JsonPrimitive)?.intOrNull ?: 10, it.text("focus_cue").orEmpty())
         }
         return LessonNodeUi(
@@ -255,25 +263,38 @@ fun LessonDetailScreen(
                 }
                 if (node.coachingTips.isNotEmpty()) item { TipsCard(node.coachingTips) }
                 item {
-                    Button(
-                        onClick = { navController.navigate(LessonRoutes.capture(node.id, node.title, node.framing)) },
-                        enabled = node.isActive,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentNeonVolt, contentColor = BackgroundOnyx),
-                    ) {
-                        Icon(Icons.Rounded.Videocam, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (node.isCompleted) "Lesson complete" else "Record & Analyze My Swing",
-                            fontWeight = FontWeight.Bold,
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = { navController.navigate(LessonRoutes.live(node.id, node.drill?.id)) },
+                            enabled = node.isActive || node.isCompleted,
+                            modifier = Modifier.weight(1f).height(64.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentNeonVolt, contentColor = BackgroundOnyx),
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Start Live Coach", fontWeight = FontWeight.Bold)
+                                Text("Real-time", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { navController.navigate(LessonRoutes.capture(node.id, node.title, node.framing)) },
+                            enabled = node.isActive,
+                            modifier = Modifier.weight(1f).height(64.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, AccentNeonVolt.copy(alpha = 0.6f)),
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Rounded.Videocam, contentDescription = null, tint = AccentNeonVolt, modifier = Modifier.size(18.dp))
+                                Text("Upload Clip", fontWeight = FontWeight.Bold, color = AccentNeonVolt)
+                                Text("Deep frame analysis", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                            }
+                        }
                     }
                     Text(
                         text = when {
-                            node.isCompleted -> "You passed this lesson. Your active lesson is next on the path."
-                            node.hasRemedial -> "Attempt ${node.attempts}: finish the remedial drill on Home, then record again. Score 80+ to unlock the next lesson."
-                            else -> "Score 80+ on your recorded swing to complete this lesson and unlock the next one."
+                            node.isCompleted -> "You passed this lesson. Practise it live any time; your active lesson is next on the path."
+                            node.hasRemedial -> "Attempt ${node.attempts}: finish the remedial drill, then go again. Live: hit the rep target; upload: score 80+."
+                            else -> "Live: hit the quality-rep target (or average 75%+). Upload: score 80+. Either one completes the lesson."
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted,

@@ -6,8 +6,8 @@
     uv run python scripts/gemini_coach_cli.py --email you@tempo.app \\
         --once "I want to focus on my backhand net clearance and move my Tuesday session to 7pm"
 
-Each reply prints the tools Thea called and what changed in athlete_memory; pull to refresh
-Home on the Pixel to see the same change. Commands: /memory, /quit.
+Each reply prints the tools Thea called and what changed in athlete_memory; the Pixel's Home screen
+picks the change up within seconds. Commands: /status (context brief), /memory, /quit.
 """
 from __future__ import annotations
 
@@ -43,8 +43,23 @@ def describe(value: Any) -> str:
     return json.dumps(value) if isinstance(value, (dict, list)) else str(value)
 
 
+def _derived(memory: Dict[str, Any]) -> Dict[str, Any]:
+    """Plan and drill state worth showing: the active lesson and the newest assigned drill."""
+    nodes = memory.get("curriculum_nodes") or []
+    active = next((n for n in nodes if n.get("status") == "active"), None)
+    drills = memory.get("assigned_drills") or []
+    return {**memory,
+            "active_lesson": f"{active['title']} ({sum(n.get('status') == 'completed' for n in nodes)}/{len(nodes)} done)"
+            if active else None,
+            "newest_drill": (f"{drills[-1]['title']} x{drills[-1].get('target_reps')} "
+                             f"[{drills[-1].get('stroke_type') or 'any'}]") if drills else None,
+            "gear_needed": ", ".join(g["item"] for g in memory.get("gear_list") or [] if g.get("status") == "needed") or None,
+            "latest_draft": ((memory.get("message_drafts") or [{}])[-1].get("text")) if memory.get("message_drafts") else None}
+
+
 def print_changes(before: Dict[str, Any], after: Dict[str, Any]) -> None:
-    changed = [k for k in WATCHED if before.get(k) != after.get(k)]
+    before, after = _derived(before), _derived(after)
+    changed = [k for k in WATCHED + ("active_lesson", "newest_drill", "gear_needed", "latest_draft") if before.get(k) != after.get(k)]
     if not changed:
         print("  (no memory fields changed)")
     for key in changed:
@@ -90,7 +105,7 @@ def main() -> None:
     if args.once:
         send(base, headers, args.once, target)
         return
-    print("Talk to Coach Thea. /memory shows your shared memory, /quit exits.\n")
+    print("Talk to Coach Thea. /status shows your Tempo brief, /memory the raw memory, /quit exits.\n")
     while True:
         try:
             line = input("you> ").strip()
@@ -101,6 +116,10 @@ def main() -> None:
             continue
         if line in ("/quit", "/exit"):
             return
+        if line == "/status":
+            res = requests.get(f"{base}/api/v1/coach/brief/me", headers=headers, timeout=15)
+            print("  " + (res.json()["brief_text"] if res.ok else f"! {res.status_code}: {res.text[:200]}") + "\n")
+            continue
         if line == "/memory":
             snap = memory_snapshot(base, headers)
             for key in WATCHED:

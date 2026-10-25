@@ -116,6 +116,7 @@ def _twiml(text: str) -> Response:
 
 
 @router.post("/webhooks/whatsapp")
+@router.post("/webhooks/saint")
 async def whatsapp_webhook(request: Request) -> Any:
     content_type = request.headers.get("content-type", "")
     is_form = "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type
@@ -299,6 +300,67 @@ def trigger_cadence(req: CadenceTriggerRequest,
             raise HTTPException(403, "This athlete belongs to another player")
         users = [target]
     return {"results": [run_cadence(uid, req.now, req.dispatch) for uid in users]}
+
+
+# ---------------------------------------------------------------------------
+# Context brief: one call for Saint, Gemini, or the app's WhatsApp hand-off
+# ---------------------------------------------------------------------------
+
+THEA_WHATSAPP = re.sub(r"\D", "", os.environ.get("THEA_NUMBER", "")) or "447985791437"
+
+
+def build_brief(user_id: str) -> Dict[str, Any]:
+    memory = db_mongo.get_athlete_memory(user_id)
+    nodes = memory.get("curriculum_nodes") or []
+    active_i, active = next(((i, n) for i, n in enumerate(nodes) if n.get("status") == "active"), (None, None))
+    schedule = memory.get("reminder_schedule") or {}
+    sessions = coach_converse.recent_sessions(user_id, 5)
+    live = next((s for s in sessions if s["source"] == "live"), None)
+    upload = next((s for s in sessions if s["source"] != "live"), None)
+    sport = (memory.get("sport") or "not set").replace("_", " ").title()
+    parts = [f"User: {_display_name(user_id)}",
+             f"Sport: {sport}" + (f" ({memory['level'].title()})" if memory.get("level") else "")]
+    if active:
+        parts.append(f"Active Node: {active['title']} #{active_i + 1}/{len(nodes)}")
+    if live:
+        set_bits = [f"{live['counted_reps']}/{live['reps']} reps"]
+        if live.get("avg_impact_elbow_deg"):
+            set_bits.append(f"{live['avg_impact_elbow_deg']:.0f}° avg elbow")
+        if live.get("pro_match"):
+            pm = live["pro_match"]
+            set_bits.append(f"{pm['similarity'] * 100:.0f}% {pm['player_name']} match")
+        parts.append("Last Live Set: " + ", ".join(set_bits))
+    if upload and upload.get("overall_score") is not None:
+        parts.append(f"Last Clip: {upload['overall_score']}/100")
+    if schedule.get("days_of_week"):
+        moved = "".join(f", {d[:3]} {t}" for d, t in (schedule.get("day_times") or {}).items())
+        parts.append(f"Schedule: {'/'.join(d[:3] for d in schedule['days_of_week'])} {schedule.get('time_utc')}{moved}")
+    if memory.get("focus_note"):
+        parts.append(f"Focus: {memory['focus_note']}")
+    brief = "Hi Thea [Tempo Sync | " + " | ".join(parts) + "]."
+    return {"user_id": user_id, "brief_text": brief, "thea_number": THEA_WHATSAPP,
+            "whatsapp_link": f"https://wa.me/{THEA_WHATSAPP}?text={quote(brief)}",
+            "status": coach_converse.TheaToolbox(user_id).get_full_athlete_status()}
+
+
+@router.get("/coach/courts")
+def nearby_courts(lat: float = coach_converse.DEFAULT_LAT, lng: float = coach_converse.DEFAULT_LNG,
+                  sport: Optional[str] = None,
+                  identity: Dict[str, Any] = Depends(coach_converse._identity)) -> Dict[str, Any]:
+    """Schedule tab court finder: $nearSphere courts + play/postpone call (read-only, same as Thea's tool)."""
+    result = coach_converse.TheaToolbox(identity["user_id"]).run(
+        "find_nearby_courts_and_weather", {"lat": lat, "lng": lng, **({"sport": sport} if sport else {})})
+    if not result.get("ok"):
+        raise HTTPException(422, result.get("error") or "Invalid location")
+    return {k: v for k, v in result.items() if k != "ok"}
+
+
+@router.get("/coach/brief/{ref}")
+def coach_brief(ref: str, identity: Dict[str, Any] = Depends(coach_converse._identity)) -> Dict[str, Any]:
+    """`ref` is "me", a user id, or an account email. Players may read only their own brief."""
+    target = identity["user_id"] if ref == "me" else _resolve_gemini_target(
+        identity, None if "@" in ref else ref, ref if "@" in ref else None)
+    return build_brief(target)
 
 
 # ---------------------------------------------------------------------------

@@ -659,6 +659,7 @@ def seed_reference_data(remove_legacy_badminton_pros: bool = False) -> Dict[str,
         except Exception:
             pass
 
+        seed_facilities(db)
         for partner in SEED_LONDON_PARTNERS:
             players_col.update_one(
                 {"player_id": partner["player_id"]},
@@ -1352,22 +1353,33 @@ NODE_STATUSES = ("locked", "active", "completed")
 MEMORY_FIELDS = (
     "phone_number", "sport", "skill_focus", "level", "motivation_why", "intensity",
     "reminder_schedule", "curriculum_nodes", "recent_flaws", "chat_history", "assigned_drills",
-    "last_completed_node", "focus_note",
+    "last_completed_node", "focus_note", "gear_list", "message_drafts",
 )
 
+# indoor/outdoor flags are what each venue offers; prices and booking lead times change, so they are
+# deliberately not stored: Thea points to live availability and drafts the booking request instead.
 SEED_LONDON_FACILITIES: List[Dict[str, Any]] = [
+    {"facility_id": "fac_finsbury_leisure", "name": "Finsbury Leisure Centre", "postcode": "EC1V 3PU",
+     "sports": ["badminton"], "indoor": True, "outdoor": False,
+     "location_geojson": {"type": "Point", "coordinates": [-0.0982, 51.5265]}},
     {"facility_id": "fac_islington_tennis_centre", "name": "Islington Tennis Centre", "postcode": "N7 9RQ",
-     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1196, 51.5524]}},
+     "sports": ["tennis"], "indoor": True, "outdoor": True,
+     "location_geojson": {"type": "Point", "coordinates": [-0.1196, 51.5524]}},
     {"facility_id": "fac_westway_sports_centre", "name": "Westway Sports & Fitness Centre", "postcode": "W10 6RP",
-     "sports": ["tennis", "badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.2154, 51.5207]}},
+     "sports": ["tennis", "badminton"], "indoor": True, "outdoor": True,
+     "location_geojson": {"type": "Point", "coordinates": [-0.2154, 51.5207]}},
     {"facility_id": "fac_regents_park_tennis", "name": "Regent's Park Tennis Centre", "postcode": "NW1 4NU",
-     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1530, 51.5285]}},
+     "sports": ["tennis"], "indoor": False, "outdoor": True,
+     "location_geojson": {"type": "Point", "coordinates": [-0.1530, 51.5285]}},
     {"facility_id": "fac_paddington_rec", "name": "Paddington Recreation Ground", "postcode": "W9 1PD",
-     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1918, 51.5300]}},
+     "sports": ["tennis"], "indoor": False, "outdoor": True,
+     "location_geojson": {"type": "Point", "coordinates": [-0.1918, 51.5300]}},
     {"facility_id": "fac_lee_valley_hockey_tennis", "name": "Lee Valley Hockey & Tennis Centre", "postcode": "E20 3AB",
-     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.0151, 51.5507]}},
+     "sports": ["tennis"], "indoor": True, "outdoor": True,
+     "location_geojson": {"type": "Point", "coordinates": [-0.0151, 51.5507]}},
     {"facility_id": "fac_ucl_bloomsbury", "name": "Bloomsbury Fitness - UCL", "postcode": "WC1E 7HY",
-     "sports": ["badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.1340, 51.5246]}},
+     "sports": ["badminton"], "indoor": True, "outdoor": False,
+     "location_geojson": {"type": "Point", "coordinates": [-0.1340, 51.5246]}},
 ]
 
 _MEMORY_ATHLETES: Dict[str, Dict[str, Any]] = {}
@@ -1400,6 +1412,8 @@ def default_athlete_memory(user_id: str) -> Dict[str, Any]:
         "assigned_drills": [],
         "last_completed_node": None,
         "focus_note": None,
+        "gear_list": [],
+        "message_drafts": [],
         "created_at": _utc_now_iso(),
         "updated_at": _utc_now_iso(),
     }
@@ -1682,6 +1696,15 @@ def search_drills(query: str, sport: Optional[str] = None, limit: int = 5) -> Di
 
 
 # --- Facilities ($nearSphere on 2dsphere) ----------------------------------
+
+def seed_facilities(db: Any) -> int:
+    """Idempotently upsert the London court seed (2dsphere-indexed); safe on every startup."""
+    col = db[FACILITIES_COLLECTION]
+    col.create_index([("location_geojson", GEOSPHERE)], name="location_2dsphere_idx")
+    for fac in SEED_LONDON_FACILITIES:
+        col.replace_one({"facility_id": fac["facility_id"]}, {**fac, "city": "London"}, upsert=True)
+    return len(SEED_LONDON_FACILITIES)
+
 
 def find_nearby_facilities(lat: float, lng: float, limit: int = 5, max_km: float = 25.0) -> Dict[str, Any]:
     db = get_db()

@@ -34,9 +34,9 @@ Presenter cue: The canonical database is sports_coach_db. Shared player memory a
 
 ## 6. Use of Saint · 1:45–2:10
 
-With Saint, the player stays in control. You ask for a court, review the details and approve the action you want. Saint then carries out that approved step. In this prototype, the action is a mock booking. No real reservation or payment happens.
+Saint can receive a signed coaching event and prepare an action. Review the proposal and approve the next step. Tempo's backend checks it, executes once, and records who relayed the approval. Venues remain mocked, so no real booking or payment is made.
 
-Presenter cue: Technical detail for questions: HMAC signatures protect proposal integrity; proposals expire after 15 minutes; idempotency keys prevent repeated approvals from executing twice. The command prototype has a deterministic planner and mock venue adapter. No hosted Saint connection, real booking or payment is demonstrated.
+Presenter cue: Saint events are delivered only when SAINT_WEBHOOK_URL is configured; otherwise use the staged event log. A Saint-scoped credential reaches only Saint routes. The backend records Saint-relayed approvals. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
 
 ## 7. Demo · 2:10–2:40
 
