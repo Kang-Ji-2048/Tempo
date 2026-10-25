@@ -1,7 +1,6 @@
 package com.tempo.app.feature.sdui.ui.widgets
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,8 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,12 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tempo.app.feature.sdui.model.CheckInScheduleWidget
-import com.tempo.app.feature.sdui.model.ScheduleSlot
 import com.tempo.app.feature.sdui.model.WidgetAction
 import com.tempo.app.feature.sdui.ui.components.SduiCard
 import com.tempo.app.ui.theme.AccentNeonVolt
@@ -69,11 +64,9 @@ private val ALL_DAYS = listOf(
     "Sunday" to "Sun"
 )
 
-private val TIME_OPTIONS = listOf(
-    "07:00", "09:00", "12:00", "17:00", "18:00", "19:30", "20:00"
-)
+private val TIME_OPTIONS = listOf("07:30", "12:30", "18:00", "19:30", "20:30")
 
-private val DURATION_OPTIONS = listOf(30, 45, 60, 90)
+private val DURATION_OPTIONS = listOf(45, 60, 90)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -82,9 +75,6 @@ fun CheckInScheduleCard(
     onAction: (WidgetAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var pickedSlot by rememberSaveable(widget.key, widget.selectedSlotId) {
-        mutableStateOf(widget.selectedSlotId)
-    }
     var selectedDays by rememberSaveable(widget.key, widget.daysOfWeek) {
         mutableStateOf(widget.daysOfWeek.toSet())
     }
@@ -92,7 +82,7 @@ fun CheckInScheduleCard(
         mutableStateOf(widget.targetTimeUtc)
     }
     var selectedDuration by rememberSaveable(widget.key, widget.durationMinutes) {
-        mutableIntStateOf(widget.durationMinutes)
+        mutableIntStateOf(widget.durationMinutes.takeIf { it in DURATION_OPTIONS } ?: 60)
     }
     var preferredChannel by rememberSaveable(widget.key, widget.preferredChannel) {
         mutableStateOf(widget.preferredChannel)
@@ -102,25 +92,6 @@ fun CheckInScheduleCard(
         Text(widget.title, style = MaterialTheme.typography.titleLarge)
         if (widget.subtitle.isNotBlank()) {
             Text(widget.subtitle, style = MaterialTheme.typography.bodyMedium, color = TextSecondarySilver)
-        }
-
-        // 1. If predefined slots exist, display slot picker row
-        if (widget.slots.isNotEmpty()) {
-            Text(
-                "RECOMMENDED SLOTS",
-                style = MaterialTheme.typography.labelSmall,
-                color = AccentNeonVolt,
-                letterSpacing = 1.sp
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(widget.slots, key = { it.slotId }) { slot ->
-                    SlotTile(slot = slot, selected = slot.slotId == pickedSlot) {
-                        pickedSlot = slot.slotId
-                        onAction(WidgetAction.SlotPicked(widgetId = widget.id, slotId = slot.slotId))
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
         }
 
         // 2. Weekly Mon–Sun Day Chips Picker
@@ -191,8 +162,8 @@ fun CheckInScheduleCard(
                     letterSpacing = 1.sp
                 )
             }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(TIME_OPTIONS) { time ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TIME_OPTIONS.forEach { time ->
                     val isSelected = time == selectedTime
                     val bg by animateColorAsState(if (isSelected) AccentNeonVolt else SurfaceVariantDark, label = "timeBg")
                     val textColor = if (isSelected) BackgroundOnyx else TextPrimaryWhite
@@ -200,6 +171,7 @@ fun CheckInScheduleCard(
 
                     Box(
                         modifier = Modifier
+                            .weight(1f)
                             .clip(shape)
                             .background(bg)
                             .border(1.dp, if (isSelected) AccentNeonVolt else CardBorderSubtle, shape)
@@ -216,7 +188,7 @@ fun CheckInScheduleCard(
                                     )
                                 )
                             }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -292,56 +264,3 @@ fun CheckInScheduleCard(
     }
 }
 
-@Composable
-private fun SlotTile(slot: ScheduleSlot, selected: Boolean, onClick: () -> Unit) {
-    val fill by animateColorAsState(if (selected) AccentNeonVolt else SurfaceVariantDark, label = "slotFill")
-    val border by animateColorAsState(
-        when {
-            selected -> AccentNeonVolt
-            slot.recommended -> AccentNeonVolt.copy(alpha = 0.5f)
-            else -> CardBorderSubtle
-        },
-        label = "slotBorder",
-    )
-    val scale by animateFloatAsState(if (selected) 1.04f else 1f, label = "slotScale")
-    val shape = RoundedCornerShape(20.dp)
-    val ink = if (selected) BackgroundOnyx else TextPrimaryWhite
-
-    Box(contentAlignment = Alignment.TopCenter) {
-        Column(
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .width(92.dp)
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(shape)
-                .background(fill)
-                .border(1.5.dp, border, shape)
-                .clickable(onClick = onClick)
-                .padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                slot.dayLabel,
-                color = if (selected) BackgroundOnyx else TextSecondarySilver,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp,
-            )
-            Text(slot.timeLabel, color = ink, fontSize = 20.sp, fontWeight = FontWeight.Black)
-        }
-        if (slot.recommended) {
-            Text(
-                text = "BEST",
-                color = BackgroundOnyx,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(AccentNeonVolt)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            )
-        }
-    }
-}

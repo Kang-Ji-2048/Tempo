@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -81,6 +80,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import com.tempo.app.feature.audio.applyTheaVoice
+import com.tempo.app.feature.audio.ensureTheaVoice
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -120,7 +121,7 @@ data class VoiceExchange(
 
 /**
  * Two-way voice loop with Coach Thea: SpeechRecognizer (speech-to-text) -> `POST /api/v1/coach/converse`
- * -> TextToSpeech of `speak_text` (USAGE_MEDIA / CONTENT_TYPE_SPEECH, so it routes to earbuds).
+ * -> TextToSpeech of `speak_text` (on-device en-GB neural voice, USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).
  *
  * Answers are spoken immediately: they bypass CuePlayer's form-cue cooldown, and live mode holds
  * automatic cues while [isBusy] so Thea never talks over herself.
@@ -165,13 +166,7 @@ class VoiceConversationManager @Inject constructor(
         tts = TextToSpeech(context) { status ->
             if (status != TextToSpeech.SUCCESS) return@TextToSpeech
             tts?.apply {
-                language = Locale.US
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
+                applyTheaVoice()
                 setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) = Unit
                     override fun onDone(utteranceId: String?) = settle()
@@ -280,6 +275,7 @@ class VoiceConversationManager @Inject constructor(
 
     private fun speakOnDevice(text: String) {
         if (ttsReady) {
+            tts?.ensureTheaVoice()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "thea_${System.currentTimeMillis()}")
         } else {
             settle()

@@ -6,7 +6,7 @@ Open `index.html` in a browser. Arrow keys or Previous/Next navigate. F toggles 
 
 Team credits: Sumanth — Gemini 4 Argon; Taha — MongoDB; Kang — Saint AI; Yue — UX/UI.
 
-The evidence slide distinguishes the earlier real-video test from the current Android/backend connection and action-parser checks. Saint court actions use a deterministic planner and mock venue adapter. No live booking, payment or verified hosted Saint integration is claimed. The earlier pose-angle estimate has no ground-truth validation.
+The impact slide presents prototype capabilities and a planned player pilot. Technical test counts stay in the speaker notes rather than appearing as player-impact statistics. Saint court actions use a deterministic planner and mock venue adapter. No live booking, payment or verified hosted Saint integration is claimed. The earlier pose-angle estimate has no ground-truth validation.
 
 Static Vercel settings: repository Kang-Ji-2048/Tempo, root directory demo, framework Other, no build command, output directory `.`. Updating these files does not create or update a Vercel deployment. Fonts request Manrope from Google Fonts, with system fallbacks.
 

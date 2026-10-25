@@ -1,7 +1,6 @@
 package com.tempo.app.feature.audio
 
 import android.content.Context
-import android.media.AudioAttributes as AndroidAudioAttributes
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.media3.common.AudioAttributes
@@ -38,7 +37,7 @@ sealed interface CueEvent {
  * - Minimum 10-second gap between automatic form cues (rate limiting); cues inside the window are
  *   suppressed. Spoken answers to voice questions go through VoiceConversationManager, not here.
  * - Text cues are spoken in the ElevenLabs coach voice via [CoachVoice], falling back to on-device TTS.
- * - Routes audio to Bluetooth earbuds via AudioAttributes (USAGE_MEDIA, CONTENT_TYPE_SPEECH)
+ * - Routes audio to Bluetooth earbuds via AudioAttributes (TTS: USAGE_ASSISTANCE_NAVIGATION_GUIDANCE, CONTENT_TYPE_SPEECH)
  *   with audio focus handling.
  * - Ready for live edge stream mode.
  */
@@ -89,15 +88,11 @@ class CuePlayer @Inject constructor(
             // Fallback TextToSpeech engine configured with SPEECH audio attributes
             textToSpeech = TextToSpeech(context) { status ->
                 if (status == TextToSpeech.SUCCESS) {
-                    val result = textToSpeech?.setLanguage(Locale.US)
+                    val result = textToSpeech?.isLanguageAvailable(Locale.UK)
                     if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
-                        val ttsAudioAttributes = AndroidAudioAttributes.Builder()
-                            .setUsage(AndroidAudioAttributes.USAGE_MEDIA)
-                            .setContentType(AndroidAudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build()
-                        textToSpeech?.setAudioAttributes(ttsAudioAttributes)
+                        textToSpeech?.applyTheaVoice()
                         isTtsInitialized = true
-                        Log.d(TAG, "CuePlayer TTS initialized with speech audio attributes")
+                        Log.d(TAG, "CuePlayer TTS initialized with Thea's en-GB voice")
                     }
                 }
             }
@@ -175,6 +170,7 @@ class CuePlayer @Inject constructor(
 
     private fun speakText(text: String) {
         if (isTtsInitialized && textToSpeech != null) {
+            textToSpeech?.ensureTheaVoice()
             textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cue_${System.currentTimeMillis()}")
         } else {
             Log.w(TAG, "TTS not ready for cue text: $text")
