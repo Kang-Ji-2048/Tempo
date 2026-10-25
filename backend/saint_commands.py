@@ -240,7 +240,7 @@ def plan(user: str, text: str, prefs: Preferences, clock=None):
             'planner':'deterministic_demo','demo':True}
 
 
-def execute(decision: Decision, approved_via: Literal['player', 'saint_relay'] = 'player'):
+def execute(decision: Decision, approved_via: Literal['player', 'saint_relay', 'email_link'] = 'player'):
     action=decision.proposal.action
     if not hmac.compare_digest(decision.proposal.signature, sign(action)):
         raise HTTPException(400, 'Proposal was changed or server restarted. Request a fresh proposal.')

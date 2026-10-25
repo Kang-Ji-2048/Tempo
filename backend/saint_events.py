@@ -8,14 +8,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import hashlib
 import hmac
+from email.message import EmailMessage
+import html
 import json
 import os
+import smtplib
 from typing import Any, Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import requests
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
 
@@ -62,8 +66,49 @@ def push(event: Event) -> dict:
             outcome = {'status': 'sent' if response.ok else 'failed', 'status_code': response.status_code}
         except requests.RequestException as exc:
             outcome = {'status': 'failed', 'detail': type(exc).__name__}
+    outcome['email'] = email(event)
     saint.put_record('saint_event_log', event.event_id, {'event': event.model_dump(mode='json'), **outcome})
     return {'event': event.model_dump(mode='json'), **outcome}
+
+
+def _link_token(key: str) -> str:
+    return hmac.new(saint.signing_key(), b'approve:' + key.encode(), hashlib.sha256).hexdigest()
+
+
+def approval_url(proposal: saint.Proposal) -> str:
+    """A one-time link for the player's yes or no. Saint never holds a credential: the player taps this."""
+    key = proposal.action.idempotency_key
+    saint.put_record('saint_approval_links', key, {'proposal': proposal.model_dump(mode='json')})
+    base = os.environ.get('TEMPO_PUBLIC_URL', 'http://localhost:8000').strip().rstrip('/')
+    return f"{base}/approve/{key}/{_link_token(key)}"
+
+
+def email(event: Event) -> str:
+    """Email the event to the player (TEMPO_EMAIL_TO) over SMTP, with an approval link when there is a proposal.
+    Saint, working in the player's own inbox, picks it up from there."""
+    host, to = os.environ.get('SMTP_HOST', '').strip(), os.environ.get('TEMPO_EMAIL_TO', '').strip()
+    if not host or not to:
+        return 'not_configured'
+    lines = [event.summary, '']
+    if event.proposal:
+        action = event.proposal.action
+        lines += [action.summary, '', f"Approve or decline (works once, until {action.expires_at:%H:%M} UTC):",
+                  approval_url(event.proposal)]
+    lines += ['', f"Tempo event {event.type} ({event.event_id})"]
+    message = EmailMessage()
+    message['Subject'] = f"Tempo: {event.summary[:90]}"
+    message['From'] = os.environ.get('TEMPO_EMAIL_FROM', os.environ.get('SMTP_USER', 'tempo@localhost'))
+    message['To'] = to
+    message.set_content('\n'.join(lines))
+    try:
+        with smtplib.SMTP(host, int(os.environ.get('SMTP_PORT', '587')), timeout=10) as smtp:
+            smtp.starttls()
+            if os.environ.get('SMTP_USER'):
+                smtp.login(os.environ['SMTP_USER'], os.environ.get('SMTP_PASSWORD', ''))
+            smtp.send_message(message)
+        return 'sent'
+    except (OSError, smtplib.SMTPException):
+        return 'failed'
 
 
 def _prefs(user):
@@ -141,6 +186,30 @@ def coaching_message(user: str, event_type: str, message: str, to: str | None, c
                  occurred_at=saint.now())
 
 
+UNDELIVERED = ('staged', 'failed')
+
+
+def pending(user: str, limit: int = 20) -> list[dict]:
+    """Events for `user` that never reached Saint, oldest first. Each is marked `pulled` as it is returned,
+    so Saint sees it once. For a Saint with no inbound URL: it polls this instead of receiving pushes."""
+    db = saint.db_mongo.get_db()
+    if db is not None:
+        try:
+            rows = list(db['saint_event_log'].find({'event.user': user, 'status': {'$in': list(UNDELIVERED)}})
+                        .sort('event.occurred_at', 1).limit(limit))
+        except Exception:
+            raise HTTPException(503, 'Event storage unavailable')
+    else:
+        with saint._LOCK:
+            rows = [dict(r) for k, r in saint._MEMORY.items() if k.startswith('saint_event_log:')
+                    and r['event']['user'] == user and r['status'] in UNDELIVERED]
+        rows = sorted(rows, key=lambda r: r['event']['occurred_at'])[:limit]
+    for row in rows:
+        saint.put_record('saint_event_log', row['event']['event_id'],
+                         {'event': row['event'], 'status': 'pulled', 'pulled_at': saint.now().isoformat()})
+    return [row['event'] for row in rows]
+
+
 # Status words older callers store in saint_notifications.
 LEGACY_STATUS = {'sent': 'SENT', 'staged': 'STAGED_LOCALLY', 'failed': 'FAILED'}
 
@@ -153,6 +222,50 @@ async def mock_slot_opened(user: str, request: Request):
     """Demo trigger standing in for a real venue provider's availability feed."""
     own(request, user)
     return await run_in_threadpool(lambda: push(court_slot_opened(user)))
+
+
+@router.get('/api/v1/saint/events/pending/{user}')
+async def pending_events(user: str, request: Request):
+    """Saint polls this for events it has not seen yet (it has no inbound URL for Tempo to push to)."""
+    own(request, user)
+    return {'events': await run_in_threadpool(pending, user)}
+
+
+def _page(title: str, body: str) -> HTMLResponse:
+    return HTMLResponse(f"<!doctype html><meta name=viewport content='width=device-width'><title>{html.escape(title)}</title>"
+                        f"<body style='font-family:system-ui;max-width:32rem;margin:2rem auto;padding:0 1rem'>"
+                        f"<h1 style='font-size:1.4rem'>{html.escape(title)}</h1>{body}</body>")
+
+
+def _linked_proposal(key: str, token: str) -> saint.Proposal:
+    stored = saint.get_record('saint_approval_links', key)
+    if not stored or not hmac.compare_digest(token, _link_token(key)):
+        raise HTTPException(404, 'Unknown approval link')
+    return saint.Proposal.model_validate(stored['proposal'])
+
+
+@router.get('/approve/{key}/{token}')
+async def approval_page(key: str, token: str):
+    """Shows the proposal with Approve and Decline buttons. Opening the link changes nothing,
+    so an email client prefetching it can't book anything."""
+    proposal = await run_in_threadpool(_linked_proposal, key, token)
+    done = await run_in_threadpool(saint.get_record, 'saint_action_log', key)
+    if done:
+        return _page('Already decided', f"<p>{html.escape(proposal.action.summary)}</p><p>Status: {html.escape(done['status'])}</p>")
+    button = "<button name=decision value={0} style='font-size:1.1rem;padding:.6rem 1.2rem;margin-right:.5rem'>{1}</button>"
+    return _page('Approve this?', f"<p>{html.escape(proposal.action.summary)}</p><form method=post>"
+                 + button.format('yes', 'Approve') + button.format('no', 'Decline') + "</form>")
+
+
+@router.post('/approve/{key}/{token}')
+async def approval_decide(key: str, token: str, decision: str = Form(pattern='^(yes|no)$')):
+    proposal = await run_in_threadpool(_linked_proposal, key, token)
+    try:
+        record = await run_in_threadpool(saint.execute, saint.Decision(proposal=proposal, approved=decision == 'yes'), 'email_link')
+    except HTTPException as exc:
+        return _page('Not done', f"<p>{html.escape(str(exc.detail))}</p>")
+    title = 'Booked (mock)' if record['status'] == 'executed_mock' else 'Declined' if record['status'] == 'declined' else 'Needs review'
+    return _page(title, f"<p>{html.escape(proposal.action.summary)}</p><p>Status: {html.escape(record['status'])}</p>")
 
 
 @router.get('/api/v1/saint/tools')

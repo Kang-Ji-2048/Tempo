@@ -10,7 +10,7 @@ Presenter cue: Keep the opening short. The audience and problem are on the next 
 
 ## 2. Problem · 0:10–0:30
 
-Amateur players can film their strokes, but turning that footage into better practice is harder. What should I change? How should I practise it? And when will I play again? Tempo connects those questions into a next step the player can use.
+Gupen plays badminton, tennis and gym at a casual level. Like most amateur players, Gupen can film a stroke, but turning that footage into better practice is harder. What should I change? How should I practise it? And when will I play again? Tempo connects those questions into a next step the player can use.
 
 Presenter cue: Frame this as the problem Tempo is addressing; do not imply a completed customer study. Reveal the three horizontal question blocks with three advances. The fourth advance moves to the solution. Builds are included in this slide’s 20 seconds.
 
@@ -22,9 +22,9 @@ Presenter cue: Lead with the player benefit, then point across the diagram once.
 
 ## 4. Use of Gemini 4 Argon · 0:55–1:20
 
-Gemini 4 Argon is the coaching layer. Video and pose estimates provide movement evidence; goals and session context help shape the reply. We return one clear focus with a drill the player can use. Model failures and fallback results stay visible rather than appearing as live coaching.
+One Argon coaches, one Argon audits. The pose engine measures the elbow at contact. Argon reads the clip and those numbers, diagnoses the flaw and sets a drill; below 165 degrees is a FAIL. A second Argon checks every claim in that diagnosis against the measured angles and strikes anything the numbers don't support. When a later clip passes, Tempo marks the fix verified, with the before and after angles. That is why we need Argon: it reasons over video and measured numbers together, and it is reliable enough to check its own work.
 
-Presenter cue: Live Gemini access must be checked before presenting. Highest reach is a contact proxy, and the 165-degree gate is a project heuristic. Do not claim calibrated movement accuracy.
+Presenter cue: Live Gemini access must be checked before presenting; without GEMINI_API_KEY the labelled fallback runs, which is not Argon. Highest reach is a contact proxy, and the 165-degree gate is a project heuristic. Any angle the pose engine never measured is replaced with the measured baseline. Do not claim calibrated movement accuracy.
 
 ## 5. Use of MongoDB · 1:20–1:45
 
@@ -34,9 +34,9 @@ Presenter cue: The canonical database is sports_coach_db. Player history and tim
 
 ## 6. Use of Saint · 1:45–2:10
 
-Saint can receive a signed coaching event and prepare an action. Review the proposed court, date and time, then approve what works for you. Tempo's backend checks it, executes once, and records who relayed the approval. Venues remain mocked, so no real booking or payment is made.
+Argon finds the flaw; Saint books the fix. When a stroke fails the elbow check, or a court opens up, Tempo emails you a ready proposal with a one-time approval link. Saint spots it in your inbox and asks you on WhatsApp. Only your tap on the link books it, once, and Saint puts it in your calendar. When a later clip passes, Saint tells you the fix is verified, with the before and after angles. Venues remain mocked, so no real booking or payment is made.
 
-Presenter cue: Saint events are delivered only when SAINT_WEBHOOK_URL is configured; otherwise use the staged event log. A Saint-scoped credential reaches only Saint routes. The backend records Saint-relayed approvals. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
+Presenter cue: Saint holds no Tempo credential; the email and the one-time link are the hand-off. Opening the link changes nothing until Approve is tapped, and a second tap shows Already decided. Technical details for questions: signed proposals expire after 15 minutes and idempotency keys prevent duplicate execution. Keep the mock-venue disclosure and do not claim verified availability, real booking or payment.
 
 ## 7. Demo · 2:10–2:40
 
@@ -48,7 +48,7 @@ VIDEO: The blank 16:9 area is reserved for a prepared recording. No video is emb
 
 ## 8. Impact and next steps · 2:40–3:00
 
-Our prototype connects video feedback to a drill and a plan for the next session. The pilot will measure whether players find the feedback useful, their satisfaction, whether they complete drills and whether they return. Real venue integration follows that pilot.
+Our prototype connects video feedback to a drill and a plan for the next session. The pilot starts with Gupen and will measure whether players find the feedback useful, their satisfaction, whether they complete drills and whether they return. Real venue integration follows that pilot.
 
 Presenter cue: The left-hand column describes prototype capabilities, not measured customer impact. The earlier 20-phrase parser test and 25-frame video crop remain technical checks, not player outcomes. The crop used synthetic local biometrics and has no ground-truth angle validation. Feedback usefulness, player satisfaction, drill completion and return sessions are proposed pilot measures, not observed results. Timeline stages are planned, not dated commitments.
 
