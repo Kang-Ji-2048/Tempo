@@ -1,0 +1,67 @@
+{
+  "step_id": "schedule",
+  "progress": 0.8,
+  "coach_message": "3 sessions a week it is. Pick your days and when I should remind you.",
+  "widget": {
+    "widget_type": "CheckInScheduleWidget",
+    "id": "schedule",
+    "title": "Pick your training days",
+    "subtitle": "3x per week. Thea will nudge you before each session.",
+    "days_of_week": [
+      "Monday",
+      "Wednesday",
+      "Friday"
+    ],
+    "target_time_utc": "18:00",
+    "priming_lead_minutes": 30,
+    "preferred_channel": "whatsapp",
+    "slots": [
+      {
+        "slot_id": "07:00",
+        "day_label": "Morning",
+        "time_label": "07:00 UTC",
+        "recommended": false
+      },
+      {
+        "slot_id": "12:30",
+        "day_label": "Lunch",
+        "time_label": "12:30 UTC",
+        "recommended": false
+      },
+      {
+        "slot_id": "18:00",
+        "day_label": "Evening",
+        "time_label": "18:00 UTC",
+        "recommended": true
+      },
+      {
+        "slot_id": "20:00",
+        "day_label": "Late evening",
+        "time_label": "20:00 UTC",
+        "recommended": false
+      }
+    ],
+    "selected_slot_id": "18:00"
+  },
+  "is_completed": false,
+  "user_profile": null,
+  "athlete_memory": {
+    "user_id": "b0368d9e-df91-4a54-9dd4-9a8e85727ce3",
+    "assigned_drills": [],
+    "chat_history": [],
+    "created_at": "2026-10-25T01:26:41.075611+00:00",
+    "curriculum_nodes": [],
+    "focus_note": null,
+    "intensity": "regular",
+    "last_completed_node": null,
+    "level": "intermediate",
+    "motivation_why": "social_match_play",
+    "phone_number": null,
+    "recent_flaws": [],
+    "reminder_schedule": null,
+    "skill_focus": "one_hand_backhand",
+    "sport": "tennis",
+    "updated_at": "2026-10-25T01:26:43.413230+00:00"
+  },
+  "llm_source": null
+}

@@ -1,0 +1,57 @@
+{
+  "step_id": "goal",
+  "progress": 0.5,
+  "coach_message": "I'll start you at intermediate level. Why are you learning Tennis?",
+  "widget": {
+    "widget_type": "ChoiceWidget",
+    "id": "goal",
+    "title": "Why are you learning?",
+    "options": [
+      {
+        "id": "fitness",
+        "label": "Fitness",
+        "description": "Get fitter and healthier through the game",
+        "emoji": "\ud83d\udcaa"
+      },
+      {
+        "id": "social_match_play",
+        "label": "Social Match Play",
+        "description": "Hold your own in friendly games and club nights",
+        "emoji": "\ud83e\udd1d"
+      },
+      {
+        "id": "tournament_mastery",
+        "label": "Tournament Mastery",
+        "description": "Compete and win in tournaments",
+        "emoji": "\ud83c\udfc6"
+      },
+      {
+        "id": "technique_refinement",
+        "label": "Technique Refinement",
+        "description": "Polish your strokes with measured feedback",
+        "emoji": "\ud83c\udfaf"
+      }
+    ]
+  },
+  "is_completed": false,
+  "user_profile": null,
+  "athlete_memory": {
+    "user_id": "b0368d9e-df91-4a54-9dd4-9a8e85727ce3",
+    "assigned_drills": [],
+    "chat_history": [],
+    "created_at": "2026-10-25T01:26:41.075611+00:00",
+    "curriculum_nodes": [],
+    "focus_note": null,
+    "intensity": null,
+    "last_completed_node": null,
+    "level": "intermediate",
+    "motivation_why": null,
+    "phone_number": null,
+    "recent_flaws": [],
+    "reminder_schedule": null,
+    "skill_focus": "one_hand_backhand",
+    "sport": "tennis",
+    "updated_at": "2026-10-25T01:26:43.216839+00:00"
+  },
+  "llm_source": null
+}

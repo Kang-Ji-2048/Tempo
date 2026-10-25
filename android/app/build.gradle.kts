@@ -9,15 +9,22 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val tempoLocalProperties = Properties().apply {
-    val propertiesFile = rootProject.file("local.properties")
-    if (propertiesFile.exists()) propertiesFile.inputStream().use { load(it) }
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
 }
-val tempoDebugBaseUrl = providers.gradleProperty("tempo.baseUrl").orNull
-    ?: tempoLocalProperties.getProperty("tempo.baseUrl", "http://10.0.6.243:8000/")
-require(tempoDebugBaseUrl.matches(Regex("https?://[A-Za-z0-9.\\-]+(?::[0-9]+)?/"))) {
-    "tempo.baseUrl must be an HTTP(S) server URL ending in /"
+
+val localBaseUrl = providers.gradleProperty("tempo.baseUrl").orNull
+    ?: localProperties.getProperty("tempo.baseUrl")
+    ?: localProperties.getProperty("BASE_URL", "http://127.0.0.1:8000/")
+require(localBaseUrl.matches(Regex("https?://[A-Za-z0-9.\\-]+(?::[0-9]+)?/"))) {
+    "BASE_URL or tempo.baseUrl must be an HTTP(S) server URL ending in /"
 }
+val localDebugToken = localProperties.getProperty("TEMPO_DEBUG_TOKEN", "")
+val localTheaNumber = localProperties.getProperty("THEA_NUMBER", "")
+val localUseMockApi = false
+val localUserId = localProperties.getProperty("TEMPO_USER_ID", "user_1")
 
 android {
     namespace = "com.tempo.app"
@@ -32,8 +39,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "BASE_URL", "\"http://10.0.6.243:8000/\"")
-        buildConfigField("Boolean", "USE_MOCK_API", "true")
+        buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+        buildConfigField("Boolean", "USE_MOCK_API", "$localUseMockApi")
+        buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"$localDebugToken\"")
+        buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+        buildConfigField("String", "TEMPO_USER_ID", "\"\"")
     }
 
     buildTypes {
@@ -43,10 +53,27 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "BASE_URL", "\"https://api.tempo.app/\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "false")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"\"")
         }
         debug {
-            buildConfigField("String", "BASE_URL", "\"$tempoDebugBaseUrl\"")
-            buildConfigField("Boolean", "USE_MOCK_API", "true")
+            buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "$localUseMockApi")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"$localDebugToken\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
+        }
+        create("demoOffline") {
+            initWith(getByName("debug"))
+            matchingFallbacks += listOf("debug")
+            buildConfigField("String", "BASE_URL", "\"$localBaseUrl\"")
+            buildConfigField("Boolean", "USE_MOCK_API", "false")
+            buildConfigField("String", "TEMPO_DEBUG_TOKEN", "\"\"")
+            buildConfigField("String", "THEA_NUMBER", "\"$localTheaNumber\"")
+            buildConfigField("String", "TEMPO_USER_ID", "\"$localUserId\"")
         }
     }
 

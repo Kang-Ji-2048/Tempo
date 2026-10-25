@@ -25,7 +25,7 @@ import importlib.abc
 import sys
 class BlockLegacyDependencies(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in {'motor', 'aiofiles', 'pydantic_settings'}:
+        if fullname.split('.')[0] in {'motor', 'aiofiles'}:
             raise AssertionError('Unexpected legacy dependency: ' + fullname)
 sys.meta_path.insert(0, BlockLegacyDependencies())
 from app.main import app

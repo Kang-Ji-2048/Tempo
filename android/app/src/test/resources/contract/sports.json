@@ -1,0 +1,113 @@
+[
+  {
+    "id": "badminton",
+    "display_name": "Badminton",
+    "icon_key": "badminton_shuttle",
+    "analysis_ready": true,
+    "skills": [
+      {
+        "id": "overhead_clear",
+        "name": "Overhead Clear",
+        "analysis_ready": true
+      },
+      {
+        "id": "jump_smash",
+        "name": "Jump Smash",
+        "analysis_ready": false
+      }
+    ]
+  },
+  {
+    "id": "tennis",
+    "display_name": "Tennis",
+    "icon_key": "tennis_ball",
+    "analysis_ready": true,
+    "skills": [
+      {
+        "id": "forehand",
+        "name": "Modern Forehand",
+        "analysis_ready": true
+      },
+      {
+        "id": "one_hand_backhand",
+        "name": "One-Handed Backhand",
+        "analysis_ready": true
+      }
+    ]
+  },
+  {
+    "id": "padel",
+    "display_name": "Padel",
+    "icon_key": "padel_racket",
+    "analysis_ready": false,
+    "skills": [
+      {
+        "id": "bandeja",
+        "name": "Bandeja",
+        "analysis_ready": false
+      },
+      {
+        "id": "vibora",
+        "name": "Vibora",
+        "analysis_ready": false
+      }
+    ]
+  },
+  {
+    "id": "pickleball",
+    "display_name": "Pickleball",
+    "icon_key": "pickleball_paddle",
+    "analysis_ready": false,
+    "skills": [
+      {
+        "id": "kitchen_dink",
+        "name": "Kitchen Line Dink",
+        "analysis_ready": false
+      },
+      {
+        "id": "third_shot_drop",
+        "name": "Third Shot Drop",
+        "analysis_ready": false
+      }
+    ]
+  },
+  {
+    "id": "squash",
+    "display_name": "Squash",
+    "icon_key": "squash_ball",
+    "analysis_ready": false,
+    "skills": [
+      {
+        "id": "straight_drive",
+        "name": "Rail / Straight Drive",
+        "analysis_ready": false
+      }
+    ]
+  },
+  {
+    "id": "table_tennis",
+    "display_name": "Table Tennis",
+    "icon_key": "table_tennis_paddle",
+    "analysis_ready": false,
+    "skills": [
+      {
+        "id": "forehand_loop",
+        "name": "Forehand Topspin Loop",
+        "analysis_ready": false
+      }
+    ]
+  },
+  {
+    "id": "golf",
+    "display_name": "Golf",
+    "icon_key": "golf_tee",
+    "analysis_ready": false,
+    "skills": [
+      {
+        "id": "driver_swing",
+        "name": "Driver Full Swing",
+        "analysis_ready": false
+      }
+    ]
+  }
+]

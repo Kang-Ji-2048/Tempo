@@ -1,32 +1,19 @@
-from app.services.gemini_analyzer import (
-    GeminiAnalyzer,
-    get_gemini_analyzer,
-    set_gemini_analyzer,
-)
-from app.services.saint_cadence import SaintCadenceService
-from app.services.sdui_generator import SDUIGenerator
-from app.services.storage import (
-    CloudStorageService,
-    LocalStorageService,
-    StorageService,
-    get_storage_service,
-    set_storage_service,
-)
-from app.services.tasks import process_session_biomechanics
-from app.services.vector_matcher import VectorMatcher, compute_cosine_similarity
+"""Compatibility service exports, loaded only when explicitly requested."""
+from importlib import import_module
 
-__all__ = [
-    "CloudStorageService",
-    "LocalStorageService",
-    "StorageService",
-    "get_storage_service",
-    "set_storage_service",
-    "GeminiAnalyzer",
-    "get_gemini_analyzer",
-    "set_gemini_analyzer",
-    "SDUIGenerator",
-    "process_session_biomechanics",
-    "VectorMatcher",
-    "compute_cosine_similarity",
-    "SaintCadenceService",
-]
+_EXPORTS = {
+    'GeminiAnalyzer': 'gemini_analyzer', 'get_gemini_analyzer': 'gemini_analyzer',
+    'set_gemini_analyzer': 'gemini_analyzer', 'SaintCadenceService': 'saint_cadence',
+    'SDUIGenerator': 'sdui_generator', 'CloudStorageService': 'storage',
+    'LocalStorageService': 'storage', 'StorageService': 'storage',
+    'get_storage_service': 'storage', 'set_storage_service': 'storage',
+    'process_session_biomechanics': 'tasks', 'VectorMatcher': 'vector_matcher',
+    'compute_cosine_similarity': 'vector_matcher',
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    return getattr(import_module(f'{__name__}.{_EXPORTS[name]}'), name)

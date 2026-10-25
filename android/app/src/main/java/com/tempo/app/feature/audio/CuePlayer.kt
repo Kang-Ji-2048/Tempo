@@ -35,7 +35,8 @@ sealed interface CueEvent {
  * Singleton CuePlayer that plays short real-time audio cues for edge coaching.
  *
  * Rules:
- * - Minimum 15-second gap between cues (rate limiting). Any cue requested within 15s is suppressed.
+ * - Minimum 10-second gap between automatic form cues (rate limiting); cues inside the window are
+ *   suppressed. Spoken answers to voice questions go through VoiceConversationManager, not here.
  * - Routes audio to Bluetooth earbuds via AudioAttributes (USAGE_MEDIA, CONTENT_TYPE_SPEECH)
  *   with audio focus handling.
  * - Ready for live edge stream mode.
@@ -46,7 +47,7 @@ class CuePlayer @Inject constructor(
 ) {
     companion object {
         const val TAG = "CuePlayer"
-        const val MIN_CUE_INTERVAL_MS = 15_000L // 15 seconds gap between cues
+        const val MIN_CUE_INTERVAL_MS = 10_000L // 10 seconds gap between automatic form cues
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -108,7 +109,7 @@ class CuePlayer @Inject constructor(
      *
      * @param audioUrl Optional remote or local URL for the cue audio clip.
      * @param cueText Optional fallback text synthesized via TextToSpeech if no audioUrl.
-     * @return true if the cue was played; false if suppressed due to the 15s rate-limit.
+     * @return true if the cue was played; false if suppressed due to the cooldown.
      */
     fun playCue(
         audioUrl: String? = null,
@@ -124,7 +125,7 @@ class CuePlayer @Inject constructor(
                 scope.launch {
                     _cueEvents.emit(
                         CueEvent.Suppressed(
-                            reason = "Minimum 15s interval not elapsed",
+                            reason = "Minimum ${MIN_CUE_INTERVAL_MS / 1000}s interval not elapsed",
                             elapsedMs = result.elapsedMs,
                             remainingCooldownMs = result.remainingCooldownMs,
                             attemptedText = cueText ?: audioUrl
@@ -188,7 +189,7 @@ class CuePlayer @Inject constructor(
         return rateLimiter.getCooldownRemainingMs(currentTimeMs)
     }
 
-    /** Resets the 15-second debounce window (useful for unit tests or starting new practice sets). */
+    /** Resets the cooldown window (useful for unit tests or starting new practice sets). */
     fun resetDebounce() {
         rateLimiter.reset()
     }

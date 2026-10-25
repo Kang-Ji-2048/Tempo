@@ -8,3 +8,6 @@ numpy
 python-multipart
 requests
 tzdata
+bcrypt
+email-validator
+pydantic-settings

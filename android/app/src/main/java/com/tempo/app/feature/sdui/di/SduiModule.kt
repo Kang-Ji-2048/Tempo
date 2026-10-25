@@ -1,6 +1,5 @@
 package com.tempo.app.feature.sdui.di
 
-import com.tempo.app.BuildConfig
 import com.tempo.app.feature.sdui.data.MockSduiApi
 import com.tempo.app.feature.sdui.data.SduiApi
 import com.tempo.app.feature.sdui.data.SduiRepository
@@ -25,8 +24,7 @@ object SduiModule {
 
     @Provides
     @Singleton
-    fun provideSduiApi(retrofit: Retrofit, mock: MockSduiApi): SduiApi =
-        if (BuildConfig.USE_MOCK_API) mock else retrofit.create(SduiApi::class.java)
+    fun provideSduiApi(retrofit: Retrofit): SduiApi = retrofit.create(SduiApi::class.java)
 
     @Provides
     @Singleton

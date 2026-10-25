@@ -12,16 +12,78 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 
+_DYNAMIC_TOKENS: dict[str, dict] = {}
+
+
+def issue_token(user_id: str, role: str = 'player', ttl_seconds: int = 86400 * 30) -> str:
+    from datetime import datetime, timezone, timedelta
+    token = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+    record = {'user_id': user_id, 'role': role, 'expires_at': expires_at}
+    _DYNAMIC_TOKENS[digest] = record
+
+    try:
+        if __package__:
+            from . import db_mongo
+        else:
+            import db_mongo
+        db = db_mongo.get_db()
+        if db is not None:
+            db['auth_tokens'].replace_one({'_id': digest}, {'_id': digest, **record}, upsert=True)
+    except Exception:
+        pass
+
+    return token
+
+
+def revoke_token(token: str) -> None:
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    _DYNAMIC_TOKENS.pop(digest, None)
+    try:
+        if __package__:
+            from . import db_mongo
+        else:
+            import db_mongo
+        db = db_mongo.get_db()
+        if db is not None:
+            db['auth_tokens'].delete_one({'_id': digest})
+    except Exception:
+        pass
+
+
 def identities():
+    table = {}
     try:
         raw = os.environ.get('TEMPO_AUTH_TOKENS')
         if raw is None:
             path = Path(os.environ.get('TEMPO_AUTH_FILE', Path(__file__).with_name('.tempo-auth.json')))
             raw = path.read_text(encoding='utf-8')
         data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
+        if isinstance(data, dict):
+            table.update(data)
     except (OSError, ValueError):
-        return {}
+        pass
+
+    # Merge dynamic in-memory tokens
+    table.update(_DYNAMIC_TOKENS)
+
+    # Merge MongoDB tokens if available
+    try:
+        if __package__:
+            from . import db_mongo
+        else:
+            import db_mongo
+        db = db_mongo.get_db()
+        if db is not None:
+            for doc in db['auth_tokens'].find({}):
+                doc_id = doc.get('_id')
+                if doc_id and not doc.get('disabled'):
+                    table[doc_id] = {k: v for k, v in doc.items() if k != '_id'}
+    except Exception:
+        pass
+
+    return table
 
 
 def authenticate(headers, cookies=None):
@@ -69,11 +131,24 @@ def event_visible(identity, event):
     return owner == identity['user_id']
 
 
+PUBLIC_PATHS = {
+    '/health',
+    '/login',
+    '/auth/session',
+    '/api/v1/auth/register',
+    '/api/v1/auth/login',
+    '/api/v1/sports',
+    # Authenticates itself (Bearer, shared secret or Twilio signature); Twilio can't send a Bearer token.
+    '/api/v1/webhooks/whatsapp',
+    '/api/v1/webhooks/saint-delivery-receipt',
+}
+
+
 def install_auth(app):
     @app.middleware('http')
     async def protect(request: Request, call_next):
         path = request.url.path
-        if path not in {'/health', '/login', '/auth/session'}:
+        if path not in PUBLIC_PATHS:
             try:
                 request.state.identity = authenticate(request.headers, request.cookies)
                 if request.method not in {'GET', 'HEAD', 'OPTIONS'} and not request.headers.get('authorization'):

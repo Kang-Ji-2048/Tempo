@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,7 +71,12 @@ private val ZigZag = listOf(0.dp, 48.dp, 72.dp, 48.dp, 0.dp, (-48).dp, (-72).dp,
 private fun offsetFor(index: Int): Dp = ZigZag[index % ZigZag.size]
 
 @Composable
-fun PathProgressCard(widget: PathProgressWidget, modifier: Modifier = Modifier) {
+fun PathProgressCard(
+    widget: PathProgressWidget,
+    modifier: Modifier = Modifier,
+    /** Called for unlocked nodes only; null leaves the path read-only. */
+    onNodeClick: ((PathNode) -> Unit)? = null,
+) {
     val states = widget.nodes.map(widget::stateOf)
     val done = states.count { it == PathNodeState.DONE }
     val fraction by animateFloatAsState(
@@ -99,12 +105,12 @@ fun PathProgressCard(widget: PathProgressWidget, modifier: Modifier = Modifier) 
             trackColor = SurfaceVariantDark,
             drawStopIndicator = {},
         )
-        PathTree(widget.nodes, states)
+        PathTree(widget.nodes, states, onNodeClick)
     }
 }
 
 @Composable
-private fun PathTree(nodes: List<PathNode>, states: List<PathNodeState>) {
+private fun PathTree(nodes: List<PathNode>, states: List<PathNodeState>, onNodeClick: ((PathNode) -> Unit)?) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -141,7 +147,14 @@ private fun PathTree(nodes: List<PathNode>, states: List<PathNodeState>) {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(x = x, y = RowHeight * i + (RowHeight - NodeBox) / 2)
-                    .size(NodeBox),
+                    .size(NodeBox)
+                    .then(
+                        if (onNodeClick != null && states[i] != PathNodeState.LOCKED) {
+                            Modifier.clip(CircleShape).clickable { onNodeClick(node) }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 PathNodeBubble(states[i])

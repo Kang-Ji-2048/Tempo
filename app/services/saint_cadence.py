@@ -5,7 +5,7 @@ app/services/saint_cadence.py - Saint (Thea) Coach Cadence Engine & Proactive Di
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import requests
 
@@ -133,6 +133,119 @@ class SaintCadenceService:
         )
 
     @classmethod
+    def evaluate_memory_cadence(
+        cls,
+        memory: Dict[str, Any],
+        recent_sessions: List[Dict[str, Any]],
+        athlete_name: str,
+        current_time: Optional[datetime] = None,
+    ) -> SaintNotificationPayload:
+        """
+        Cadence from the shared `athlete_memory` document (the one every channel edits), in priority order:
+        1. POST_SESSION_DEBRIEF for an analysed clip in the last 60 minutes.
+        2. PRE_SESSION_PRIMING inside the lead window before today's session (per-day times honoured).
+        3. MISSED_SESSION_CHECKIN when today's session window closed with no clip recorded.
+        4. MISSED_SESSION_CHECKIN (kind=missed_drill) for a remedial drill assigned over 24h ago.
+        5. RECOVERY_ADVICE previewing the next scheduled session (or asking to set one up).
+        """
+        now = current_time or datetime.now(timezone.utc)
+        user_id = memory["user_id"]
+        sport = (memory.get("sport") or "training").replace("_", " ")
+        schedule = memory.get("reminder_schedule") or {}
+        nodes = memory.get("curriculum_nodes") or []
+        lesson = next((n for n in nodes if n.get("status") == "active"), None)
+        lesson_title = lesson.get("title") if lesson else None
+        cue = None
+        if lesson:
+            cue = (lesson.get("drill_spec") or {}).get("focus_cue") or next(
+                (t for t in lesson.get("tips") or [] if not t.startswith("Phases:")), None)
+        focus = memory.get("focus_note")
+
+        def payload(event: CadenceEventType, message: str, cta: Optional[str], kind: str, **meta: Any):
+            return SaintNotificationPayload(
+                event_type=event, user_id=user_id, recipient_name=athlete_name, plain_text_message=message,
+                call_to_action=cta, dispatched_at=now,
+                session_id=meta.pop("session_id", None),
+                metadata={"kind": kind, "active_lesson": lesson_title, **meta},
+            )
+
+        def parse(ts: Any) -> Optional[datetime]:
+            try:
+                value = datetime.fromisoformat(str(ts))
+                return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                return None
+
+        def session_time(day: datetime) -> Optional[datetime]:
+            weekday = day.strftime("%A")
+            if weekday not in (schedule.get("days_of_week") or []):
+                return None
+            hhmm = (schedule.get("day_times") or {}).get(weekday) or schedule.get("time_utc") or "18:00"
+            hour, minute = map(int, hhmm.split(":"))
+            return day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        completed = [s for s in recent_sessions if str(s.get("status", "")).upper() == "COMPLETED"]
+        latest = max(completed, key=lambda s: str(s.get("updated_at") or ""), default=None)
+        finished = parse(latest.get("updated_at")) if latest else None
+        if latest and finished and timedelta(0) <= now - finished <= timedelta(minutes=60):
+            adaptation = latest.get("adaptation") or {}
+            score = latest.get("overall_score")
+            if adaptation.get("action") == "lesson_completed":
+                outcome = f"You passed {adaptation.get('node_title')}" + (
+                    f" and unlocked {adaptation['next_node_title']}." if adaptation.get("next_node_title") else ".")
+            elif adaptation.get("action") == "remedial_assigned":
+                outcome = f"I added a fix-it drill for {adaptation.get('node_title')}; nail it, then record again."
+            else:
+                outcome = latest.get("primary_flaw") or "Your breakdown is ready."
+            return payload(CadenceEventType.POST_SESSION_DEBRIEF,
+                           f"Nice work, {athlete_name}! Score {score}/100. {outcome}",
+                           "Open Tempo to review the breakdown.", "debrief",
+                           session_id=latest.get("session_id"), overall_score=score)
+
+        today = session_time(now)
+        lead = int(schedule.get("priming_lead_minutes") or 30)
+        if today is not None:
+            minutes = (today - now).total_seconds() / 60
+            if 0 <= minutes <= lead:
+                focus_line = f" Today's focus: {lesson_title}" + (f": {cue}." if cue else ".") if lesson_title else ""
+                return payload(CadenceEventType.PRE_SESSION_PRIMING,
+                               f"Hey {athlete_name}, your {sport} session starts in {int(minutes)} min "
+                               f"({today:%H:%M} UTC).{focus_line}",
+                               "Pop your earbuds in and open Live mode.", "pre_session",
+                               scheduled_for=today.isoformat())
+            recorded_today = any((parse(s.get("created_at")) or now - timedelta(days=2)).date() == now.date()
+                                 for s in recent_sessions)
+            if minutes < -30 and not recorded_today:
+                return payload(CadenceEventType.MISSED_SESSION_CHECKIN,
+                               f"Hey {athlete_name}, I didn't see a clip from today's {today:%H:%M} UTC session. "
+                               "Rest counts too. Want me to move it to tomorrow?",
+                               "Reply with a new day and time, e.g. 'move it to tomorrow 7pm'.", "missed_session",
+                               scheduled_for=today.isoformat())
+
+        stale = [d for d in memory.get("assigned_drills") or []
+                 if (parse(d.get("assigned_at")) or now) <= now - timedelta(hours=24)]
+        if stale:
+            drill = stale[-1]
+            return payload(CadenceEventType.MISSED_SESSION_CHECKIN,
+                           f"{athlete_name}, '{drill.get('title')}' is still waiting: {drill.get('target_reps')} reps, "
+                           f"cue: {drill.get('focus_cue')}.",
+                           "Do it, then mark it done in Tempo or reply DONE.", "missed_drill",
+                           drill_id=drill.get("id"))
+
+        upcoming = next((t for t in (session_time(now + timedelta(days=i)) for i in range(0, 8))
+                         if t is not None and t > now), None)
+        if upcoming is None:
+            return payload(CadenceEventType.RECOVERY_ADVICE,
+                           f"Hey {athlete_name}, you don't have training days set yet. Tell me when you can play "
+                           "and I'll build your week.", "Reply e.g. 'train me 3x a week at 6pm'.", "no_schedule")
+        focus_line = f" Focus: {focus}." if focus else (f" Up next: {lesson_title}." if lesson_title else "")
+        return payload(CadenceEventType.RECOVERY_ADVICE,
+                       f"Hey {athlete_name}, next {sport} session is {upcoming:%A %H:%M} UTC.{focus_line} "
+                       "Keep shoulders and hips mobile until then.",
+                       "Reply to change the time or ask me anything.", "next_session",
+                       scheduled_for=upcoming.isoformat())
+
+    @classmethod
     def format_thea_dispatch(cls, payload: SaintNotificationPayload) -> str:
         """
         Formats a natural conversational executive brief suitable for WhatsApp dispatch
@@ -158,13 +271,15 @@ class SaintCadenceService:
         cls,
         payload: SaintNotificationPayload,
         webhook_url: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Dispatches Saint notification payload to external Saint/Thea webhook if configured,
         or stages it locally.
         """
-        settings = get_settings()
-        target_webhook = webhook_url or settings.SAINT_WEBHOOK_URL
+        # None -> fall back to settings; an explicit "" means "not configured" (caller read the env itself).
+        target_webhook = get_settings().SAINT_WEBHOOK_URL if webhook_url is None else webhook_url
 
         thea_formatted_text = cls.format_thea_dispatch(payload)
 
@@ -186,7 +301,10 @@ class SaintCadenceService:
                     "user_id": payload.user_id,
                     "message": thea_formatted_text,
                     "raw_payload": payload.model_dump(mode="json"),
+                    # e.g. {"to": "+44...", "channel": "whatsapp"} so Saint knows where to deliver.
+                    **(extra or {}),
                 },
+                headers=headers or {},
                 timeout=5.0,
             )
             is_success = resp.status_code in (200, 201, 202)

@@ -17,10 +17,20 @@ import javax.inject.Singleton
  * Conforms to project rule: "provide a MockApi so every screen works offline".
  */
 @Singleton
-class MockTempoApi @Inject constructor() : TempoApi {
+class MockTempoApi @Inject constructor(
+    private val identity: com.tempo.app.data.PlayerIdentity
+) : TempoApi {
+
+    constructor() : this(object : com.tempo.app.data.PlayerIdentity {})
+
+    private val currentUserId: String get() = identity.userId.ifBlank { "user_1" }
 
     private val pollCounts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val savedSchedules = java.util.concurrent.ConcurrentHashMap<String, UserScheduleDto>()
+
+    override suspend fun getHealth(): Map<String, String> {
+        return mapOf("status" to "ready", "service" to "tempo-mock")
+    }
 
     override suspend fun ingestSession(
         metadata: RequestBody,
@@ -57,7 +67,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         if (currentStatus == "FAILED") {
             return SessionRecordDto(
                 sessionId = sessionId,
-                userId = "usr_sumanth_001",
+                userId = currentUserId,
                 sport = "badminton",
                 strokeType = "overhead_clear",
                 targetArchetype = "Viktor Axelsen",
@@ -69,7 +79,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         if (currentStatus == "PENDING" || currentStatus == "ANALYZING") {
             return SessionRecordDto(
                 sessionId = sessionId,
-                userId = "usr_sumanth_001",
+                userId = currentUserId,
                 sport = "badminton",
                 strokeType = "overhead_clear",
                 targetArchetype = "Viktor Axelsen",
@@ -171,7 +181,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
 
         return SessionRecordDto(
             sessionId = sessionId,
-            userId = "usr_sumanth_001",
+            userId = currentUserId,
             sport = "badminton",
             strokeType = "overhead_clear",
             targetArchetype = "Viktor Axelsen",
@@ -201,6 +211,18 @@ class MockTempoApi @Inject constructor() : TempoApi {
         delay(200)
         savedSchedules[schedule.userId] = schedule
         return schedule
+    }
+
+    override suspend fun linkWhatsApp(
+        request: com.tempo.app.network.models.WhatsAppLinkRequestDto
+    ): com.tempo.app.network.models.WhatsAppLinkResponseDto {
+        delay(150)
+        return com.tempo.app.network.models.WhatsAppLinkResponseDto(phoneNumber = request.phoneNumber)
+    }
+
+    override suspend fun getCoachMemory(): com.tempo.app.network.models.CoachMemoryResponseDto {
+        delay(150)
+        return com.tempo.app.network.models.CoachMemoryResponseDto()
     }
 
     override suspend fun nextOnboardingStep(
@@ -499,7 +521,7 @@ class MockTempoApi @Inject constructor() : TempoApi {
         val selectedArchetype = answers["archetype"] ?: "Viktor Axelsen"
 
         val userProfile = com.tempo.app.network.models.UserProfileDto(
-            userId = "usr_athlete_001",
+            userId = currentUserId,
             sport = selectedSport,
             level = selectedLevel,
             goal = selectedGoal,
@@ -516,6 +538,148 @@ class MockTempoApi @Inject constructor() : TempoApi {
             widget = null,
             isCompleted = true,
             userProfile = userProfile
+        )
+    }
+
+    override suspend fun register(request: com.tempo.app.network.models.RegisterRequestDto): com.tempo.app.network.models.AuthResponseDto {
+        delay(200)
+        val uid = "user_" + UUID.randomUUID().toString().take(8)
+        identity.userId = uid
+        identity.email = request.email
+        identity.displayName = request.displayName
+        val token = "mock_token_" + UUID.randomUUID().toString()
+        identity.accessToken = token
+        return com.tempo.app.network.models.AuthResponseDto(
+            userId = uid,
+            accessToken = token,
+            displayName = request.displayName
+        )
+    }
+
+    override suspend fun login(request: com.tempo.app.network.models.LoginRequestDto): com.tempo.app.network.models.AuthResponseDto {
+        delay(200)
+        val uid = identity.userId.ifBlank { "user_1" }
+        identity.email = request.email
+        val token = "mock_token_" + UUID.randomUUID().toString()
+        identity.accessToken = token
+        return com.tempo.app.network.models.AuthResponseDto(
+            userId = uid,
+            accessToken = token,
+            displayName = identity.displayName.ifBlank { "Athlete" }
+        )
+    }
+
+    override suspend fun getMe(): com.tempo.app.network.models.UserProfileDto {
+        delay(100)
+        return com.tempo.app.network.models.UserProfileDto(
+            userId = currentUserId,
+            sport = identity.sport ?: "badminton",
+            level = "intermediate",
+            goal = "overhead_power",
+            playstyle = "aggressive",
+            injuries = "none",
+            targetArchetype = "Viktor Axelsen",
+            calibrationCompleted = true
+        )
+    }
+
+    override suspend fun logout(): Map<String, String> {
+        delay(100)
+        identity.clear()
+        return mapOf("status" to "logged_out")
+    }
+
+    override suspend fun getSports(): List<com.tempo.app.network.models.SportDto> {
+        delay(150)
+        return listOf(
+            com.tempo.app.network.models.SportDto(
+                id = "badminton",
+                displayName = "Badminton",
+                iconKey = "badminton_shuttle",
+                analysisReady = true,
+                skills = listOf(
+                    com.tempo.app.network.models.SportSkillDto("overhead_clear", "Overhead Clear", analysisReady = true),
+                    com.tempo.app.network.models.SportSkillDto("jump_smash", "Jump Smash", analysisReady = false)
+                )
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "tennis",
+                displayName = "Tennis",
+                iconKey = "tennis_ball",
+                analysisReady = true,
+                skills = listOf(
+                    com.tempo.app.network.models.SportSkillDto("forehand", "Modern Forehand", analysisReady = true),
+                    com.tempo.app.network.models.SportSkillDto("one_hand_backhand", "One-Handed Backhand", analysisReady = true)
+                )
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "padel",
+                displayName = "Padel",
+                iconKey = "padel_racket",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "pickleball",
+                displayName = "Pickleball",
+                iconKey = "pickleball_paddle",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "squash",
+                displayName = "Squash",
+                iconKey = "squash_ball",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "table_tennis",
+                displayName = "Table Tennis",
+                iconKey = "table_tennis_paddle",
+                analysisReady = false
+            ),
+            com.tempo.app.network.models.SportDto(
+                id = "golf",
+                displayName = "Golf",
+                iconKey = "golf_tee",
+                analysisReady = false
+            )
+        )
+    }
+
+    override suspend fun updateProfile(
+        profile: com.tempo.app.network.models.ProfilePayloadDto
+    ): com.tempo.app.network.models.ProfileUpdateResponseDto {
+        delay(150)
+        identity.sport = profile.sport
+        identity.skill = profile.skill
+        return com.tempo.app.network.models.ProfileUpdateResponseDto(
+            status = "profile_updated", userId = currentUserId, sport = profile.sport, skill = profile.skill)
+    }
+
+    override suspend fun getProfile(): com.tempo.app.network.models.UserProfileDto {
+        return getMe()
+    }
+
+    override suspend fun getAiStatus(): com.tempo.app.network.models.AiStatusDto {
+        delay(100)
+        return com.tempo.app.network.models.AiStatusDto(
+            configured = true,
+            model = "gemini-4-argon",
+            keyMasked = "AQ.A...ciCg",
+            lastCallOk = true,
+            lastLatencyMs = 420,
+            lastCheckedAt = java.time.Instant.now().toString()
+        )
+    }
+
+    override suspend fun converseWithCoach(
+        request: com.tempo.app.network.models.CoachConverseRequestDto
+    ): com.tempo.app.network.models.CoachConverseResponseDto {
+        delay(250)
+        return com.tempo.app.network.models.CoachConverseResponseDto(
+            replyText = "Welcome to your training studio. I'm Thea, your biomechanics coach. Based on your recent overhead practice, we're locking in high contact apex and forearm pronation. What would you like to work on today?",
+            audioCueText = "Reach high at contact apex.",
+            dynamicWidgets = emptyList(),
+            latencyMs = 250
         )
     }
 }

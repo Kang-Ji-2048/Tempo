@@ -19,7 +19,11 @@ data class BiomechanicalDebrief(
     val matchedArchetype: String?,
     val audioCue: String? = null,
     val voiceNoteScript: String? = null,
-    val voiceNoteUrl: String? = null
+    val voiceNoteUrl: String? = null,
+    val llmSource: String? = null,
+    val llmModel: String? = null,
+    val llmError: String? = null,
+    val videoUsed: Boolean? = null
 )
 
 data class AnalysisUiState(

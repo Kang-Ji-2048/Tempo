@@ -79,7 +79,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_roger_federer_serve_smash",
         "player_name": "Roger Federer",
         "country": "SUI",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Pinpoint Overhead Serve & High-Contact Smash",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 176.5,
@@ -106,7 +106,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_novak_djokovic_serve_smash",
         "player_name": "Novak Djokovic",
         "country": "SRB",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Elastic Kinetic-Chain Overhead Serve & Smash",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 174.0,
@@ -133,7 +133,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_carlos_alcaraz_overhead",
         "player_name": "Carlos Alcaraz",
         "country": "ESP",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Explosive Jump Overhead Smash & Kick Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 171.5,
@@ -159,7 +159,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_serena_williams_serve",
         "player_name": "Serena Williams",
         "country": "USA",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Power First Serve & Overhead Drive",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 175.5,
@@ -185,7 +185,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_jannik_sinner_serve",
         "player_name": "Jannik Sinner",
         "country": "ITA",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "High-Leverage Platform Overhead Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 173.0,
@@ -211,7 +211,7 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "reference_id": "pro_rafael_nadal_overhead",
         "player_name": "Rafael Nadal",
         "country": "ESP",
-        "sport": "Tennis",
+        "sport": "tennis",
         "stroke_type": "Skyhook Overhead Smash & Slice Serve",
         "is_pro_reference": True,
         "right_elbow_contact_deg": 169.5,
@@ -231,6 +231,83 @@ PRO_REFERENCE_STROKES: List[Dict[str, Any]] = [
         "biomechanical_notes": (
             "22x Grand Slam champion known for unmatched core torque and high-margin overhead smash stability "
             "(169.5 deg contact extension with heavy wrist snap)."
+        ),
+    },    {
+        "reference_id": "pro_viktor_axelsen_overhead_clear",
+        "player_name": "Viktor Axelsen",
+        "country": "DEN",
+        "sport": "badminton",
+        "stroke_type": "Full-Reach Overhead Clear",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 176.0,
+        "right_shoulder_abduction_deg": 168.0,
+        "trunk_arch_deg": 164.0,
+        "right_knee_flexion_deg": 148.0,
+        "left_arm_balance_deg": 142.0,
+        "contact_height_norm": 0.96,
+        "pose_vector": [
+            round(176.0 / 180.0, 4),
+            round(168.0 / 180.0, 4),
+            round(164.0 / 180.0, 4),
+            round(148.0 / 180.0, 4),
+            round(142.0 / 180.0, 4),
+            0.96,
+        ],
+        "biomechanical_notes": (
+            "Two-time Olympic champion whose 1.94 m frame delivers near-full 176 deg elbow extension at contact, "
+            "a tall rear-court contact point and a stable non-racket-arm counterbalance for deep, flat clears."
+        ),
+    },
+    {
+        "reference_id": "pro_an_se_young_overhead_clear",
+        "player_name": "An Se-young",
+        "country": "KOR",
+        "sport": "badminton",
+        "stroke_type": "Defensive-to-Attack Overhead Clear",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 172.0,
+        "right_shoulder_abduction_deg": 164.0,
+        "trunk_arch_deg": 161.0,
+        "right_knee_flexion_deg": 142.0,
+        "left_arm_balance_deg": 138.0,
+        "contact_height_norm": 0.93,
+        "pose_vector": [
+            round(172.0 / 180.0, 4),
+            round(164.0 / 180.0, 4),
+            round(161.0 / 180.0, 4),
+            round(142.0 / 180.0, 4),
+            round(138.0 / 180.0, 4),
+            0.93,
+        ],
+        "biomechanical_notes": (
+            "Olympic and world champion with elite rear-court recovery: compact kinetic chain, deep knee load (142 deg) "
+            "and early shoulder rotation that turns defensive clears into attacking length."
+        ),
+    },
+    {
+        "reference_id": "pro_lee_zii_jia_jump_smash",
+        "player_name": "Lee Zii Jia",
+        "country": "MAS",
+        "sport": "badminton",
+        "stroke_type": "Explosive Jump Smash",
+        "is_pro_reference": True,
+        "right_elbow_contact_deg": 174.0,
+        "right_shoulder_abduction_deg": 170.0,
+        "trunk_arch_deg": 158.0,
+        "right_knee_flexion_deg": 132.0,
+        "left_arm_balance_deg": 140.0,
+        "contact_height_norm": 0.98,
+        "pose_vector": [
+            round(174.0 / 180.0, 4),
+            round(170.0 / 180.0, 4),
+            round(158.0 / 180.0, 4),
+            round(132.0 / 180.0, 4),
+            round(140.0 / 180.0, 4),
+            0.98,
+        ],
+        "biomechanical_notes": (
+            "Explosive jumper whose airborne contact sits at the highest normalized point of the set (0.98), "
+            "pairing a pronounced trunk arch with a deep 132 deg take-off knee bend for steep smash angles."
         ),
     },
 ]
@@ -670,13 +747,40 @@ def _strip_mongo_id(doc: Dict[str, Any]) -> Dict[str, Any]:
     return cleaned
 
 
-def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
+def ensure_pose_vector_index(db: Any) -> Dict[str, Any]:
     """
-    Match `user_pose_vector` against pro reference strokes (Roger Federer, Novak Djokovic,
-    Carlos Alcaraz, Serena Williams, Jannik Sinner, Rafael Nadal) using MongoDB Atlas
-    `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`), with a Python
-    cosine-similarity fallback if the Atlas index isn't built yet or MongoDB is offline.
+    Create or update the Atlas `pose_vector_index` on `strokes.pose_vector` (6D cosine),
+    with `is_pro_reference` and `sport` as filter fields for per-sport pro matching.
     """
+    from pymongo.operations import SearchIndexModel
+
+    definition = {
+        "fields": [
+            {"type": "vector", "path": "pose_vector", "numDimensions": 6, "similarity": "cosine"},
+            {"type": "filter", "path": "is_pro_reference"},
+            {"type": "filter", "path": "sport"},
+        ]
+    }
+    col = db[STROKES_COLLECTION]
+    existing = {idx["name"]: idx for idx in col.list_search_indexes()}
+    if VECTOR_INDEX_NAME in existing:
+        col.update_search_index(VECTOR_INDEX_NAME, definition)
+        return {"index": VECTOR_INDEX_NAME, "action": "updated"}
+    col.create_search_index(SearchIndexModel(definition=definition, name=VECTOR_INDEX_NAME, type="vectorSearch"))
+    return {"index": VECTOR_INDEX_NAME, "action": "created"}
+
+
+def find_closest_pro_pose(user_pose_vector: List[float], sport: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Match `user_pose_vector` against pro reference strokes of the user's `sport` (tennis or badminton)
+    using MongoDB Atlas `$vectorSearch` (index: `pose_vector_index`, path: `pose_vector`, filtered on
+    `sport`), with a Python cosine-similarity fallback if the Atlas index isn't built yet or MongoDB is
+    offline. If no pros exist for `sport`, all pros are considered and `sport_matched` is False.
+    """
+    sport_id = (sport or "").strip().lower() or None
+    pro_filter: Dict[str, Any] = {"is_pro_reference": True}
+    if sport_id:
+        pro_filter["sport"] = sport_id
     db = get_db()
     if db is not None:
         try:
@@ -688,7 +792,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                         "queryVector": [float(x) for x in user_pose_vector],
                         "numCandidates": 20,
                         "limit": 4,
-                        "filter": {"is_pro_reference": True},
+                        "filter": pro_filter,
                     }
                 },
                 {
@@ -717,6 +821,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
                 best = _strip_mongo_id(results[0])
                 best["similarity_score"] = round(float(best.get("similarity_score", 0.0)), 4)
                 best["search_method"] = "mongodb_atlas_vector_search"
+                best["sport_matched"] = bool(sport_id)
                 best["all_pro_matches"] = [_strip_mongo_id(r) for r in results]
                 return best
         except Exception:
@@ -730,6 +835,10 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
             candidates = []
     if not candidates:
         candidates = [dict(doc) for doc in PRO_REFERENCE_STROKES]
+    same_sport = [c for c in candidates if sport_id and c.get("sport") == sport_id]
+    sport_matched = bool(same_sport)
+    if sport_matched:
+        candidates = same_sport
 
     scored: List[Tuple[float, Dict[str, Any]]] = []
     for cand in candidates:
@@ -741,6 +850,7 @@ def find_closest_pro_pose(user_pose_vector: List[float]) -> Dict[str, Any]:
     scored.sort(key=lambda item: item[0], reverse=True)
     best_match = dict(scored[0][1])
     best_match["search_method"] = "python_cosine_similarity_fallback"
+    best_match["sport_matched"] = sport_matched
     best_match["all_pro_matches"] = [item[1] for item in scored]
     return best_match
 
@@ -1078,7 +1188,9 @@ def get_fatigue_biomechanics_analytics(user_name: str = "user_1") -> Dict[str, A
 
     method = "in_memory_facet_fallback"
     rows = [s for s in _MEMORY_STROKES
-            if s.get("user_name") == user_name and s.get("is_pro_reference") is False]
+            if s.get("user_name") == user_name and s.get("is_pro_reference") is False
+            # Clips with no reliable pose carry no angles; they can't join the elbow-vs-HR comparison.
+            and "right_elbow_contact_deg" in ((s.get("pose_analysis") or {}).get("raw_angles") or {})]
     buckets = []
     for low, high, label in [(0, 145, "Zone 1-2 (<145 BPM)"),
                              (145, 165, "Zone 3-4 (145-<165 BPM)"),
@@ -1209,3 +1321,461 @@ def update_saint_approval(session_id: str, approved: bool, reviewer_name: str = 
         if session_id in _MEMORY_APPROVALS:
             _MEMORY_APPROVALS[session_id].update(fields)
     return {"session_id": session_id, **fields}
+
+
+# ---------------------------------------------------------------------------
+# Unified athlete core memory (shared by app, live, WhatsApp and Gemini channels)
+# ---------------------------------------------------------------------------
+
+if __package__:
+    from . import sports_config as _sports_config
+else:
+    import sports_config as _sports_config
+
+import logging as _logging
+import re as _re
+import threading as _threading
+from urllib.parse import quote_plus as _quote_plus
+
+_memory_log = _logging.getLogger("tempo.athlete_memory")
+
+ATHLETE_MEMORY_COLLECTION = "athlete_memory"
+DRILLS_COLLECTION = "drills_catalog"
+FACILITIES_COLLECTION = "facilities"
+SAINT_QUEUE_COLLECTION = "saint_notifications"
+DRILLS_SEARCH_INDEX_NAME = "drills_text_index"
+CHAT_HISTORY_TURNS = 15
+
+LEVELS = ("beginner", "intermediate", "advanced")
+INTENSITIES = ("casual", "regular", "competitive")
+NODE_STATUSES = ("locked", "active", "completed")
+MEMORY_FIELDS = (
+    "phone_number", "sport", "skill_focus", "level", "motivation_why", "intensity",
+    "reminder_schedule", "curriculum_nodes", "recent_flaws", "chat_history", "assigned_drills",
+    "last_completed_node", "focus_note",
+)
+
+SEED_LONDON_FACILITIES: List[Dict[str, Any]] = [
+    {"facility_id": "fac_islington_tennis_centre", "name": "Islington Tennis Centre", "postcode": "N7 9RQ",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1196, 51.5524]}},
+    {"facility_id": "fac_westway_sports_centre", "name": "Westway Sports & Fitness Centre", "postcode": "W10 6RP",
+     "sports": ["tennis", "badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.2154, 51.5207]}},
+    {"facility_id": "fac_regents_park_tennis", "name": "Regent's Park Tennis Centre", "postcode": "NW1 4NU",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1530, 51.5285]}},
+    {"facility_id": "fac_paddington_rec", "name": "Paddington Recreation Ground", "postcode": "W9 1PD",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.1918, 51.5300]}},
+    {"facility_id": "fac_lee_valley_hockey_tennis", "name": "Lee Valley Hockey & Tennis Centre", "postcode": "E20 3AB",
+     "sports": ["tennis"], "location_geojson": {"type": "Point", "coordinates": [-0.0151, 51.5507]}},
+    {"facility_id": "fac_ucl_bloomsbury", "name": "Bloomsbury Fitness - UCL", "postcode": "WC1E 7HY",
+     "sports": ["badminton"], "location_geojson": {"type": "Point", "coordinates": [-0.1340, 51.5246]}},
+]
+
+_MEMORY_ATHLETES: Dict[str, Dict[str, Any]] = {}
+_MEMORY_SAINT_QUEUE: List[Dict[str, Any]] = []
+_ATHLETE_LOCK = Lock()
+
+
+def _utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def youtube_search_url(*terms: str) -> str:
+    """A YouTube search link (never a guessed video id) for a lesson or drill."""
+    return "https://www.youtube.com/results?search_query=" + _quote_plus(" ".join(t for t in terms if t))
+
+
+def default_athlete_memory(user_id: str) -> Dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "phone_number": None,
+        "sport": None,
+        "skill_focus": None,
+        "level": None,
+        "motivation_why": None,
+        "intensity": None,
+        "reminder_schedule": None,
+        "curriculum_nodes": [],
+        "recent_flaws": [],
+        "chat_history": [],
+        "assigned_drills": [],
+        "last_completed_node": None,
+        "focus_note": None,
+        "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+
+
+def _validate_memory_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
+    unknown = set(updates) - set(MEMORY_FIELDS)
+    if unknown:
+        raise ValueError(f"Unknown athlete_memory fields: {sorted(unknown)}")
+    clean = dict(updates)
+    if clean.get("level") is not None and clean["level"] not in LEVELS:
+        raise ValueError(f"level must be one of {LEVELS}")
+    if clean.get("intensity") is not None and clean["intensity"] not in INTENSITIES:
+        raise ValueError(f"intensity must be one of {INTENSITIES}")
+    if clean.get("sport") is not None:
+        clean["sport"] = str(clean["sport"]).strip().lower()
+    for node in clean.get("curriculum_nodes") or []:
+        if node.get("status") not in NODE_STATUSES:
+            raise ValueError(f"curriculum node status must be one of {NODE_STATUSES}")
+    if "chat_history" in clean:
+        clean["chat_history"] = list(clean["chat_history"])[-CHAT_HISTORY_TURNS:]
+    return clean
+
+
+USER_INDEXES = {"user_id_unique": "user_id", "email_unique": "email"}
+LEGACY_USER_INDEXES = ("userId_1", "location_2dsphere_idx")  # old camelCase schema; userId is never written
+
+
+def ensure_user_indexes(db: Any) -> Dict[str, List[str]]:
+    """Drop stale camelCase `users` indexes (a unique `userId` makes every second sign-up collide on
+    null and fall back to process memory) and index the fields accounts actually use."""
+    col = db["users"]
+    existing = col.index_information()
+    dropped = [name for name in LEGACY_USER_INDEXES if name in existing]
+    for name in dropped:
+        col.drop_index(name)
+    created = []
+    for name, field in USER_INDEXES.items():
+        if name not in existing:
+            col.create_index(field, name=name, unique=True,
+                             partialFilterExpression={field: {"$type": "string"}})
+            created.append(name)
+    return {"dropped": dropped, "created": created}
+
+
+def get_athlete_memory(user_id: str) -> Dict[str, Any]:
+    """Return the athlete's memory document, or a fresh default (not yet persisted)."""
+    db = get_db()
+    if db is not None:
+        try:
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one({"user_id": user_id}, {"_id": 0})
+            if doc:
+                return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        cached = _MEMORY_ATHLETES.get(user_id)
+        return dict(cached) if cached else default_athlete_memory(user_id)
+
+
+def find_athlete_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
+    phone = (phone_number or "").strip()
+    if not phone:
+        return None
+    db = get_db()
+    if db is not None:
+        try:
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one({"phone_number": phone}, {"_id": 0})
+            if doc:
+                return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        for doc in _MEMORY_ATHLETES.values():
+            if doc.get("phone_number") == phone:
+                return dict(doc)
+    return None
+
+
+def update_athlete_memory(user_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and `$set` fields on the athlete's memory (upserting it), returning the new document."""
+    clean = _validate_memory_updates(updates)
+    now = _utc_now_iso()
+    db = get_db()
+    if db is not None:
+        try:
+            from pymongo import ReturnDocument
+
+            defaults = {k: v for k, v in default_athlete_memory(user_id).items()
+                        if k not in clean and k not in ("user_id", "updated_at")}
+            doc = db[ATHLETE_MEMORY_COLLECTION].find_one_and_update(
+                {"user_id": user_id},
+                {"$set": {**clean, "updated_at": now}, "$setOnInsert": defaults},
+                upsert=True,
+                projection={"_id": 0},
+                return_document=ReturnDocument.AFTER,
+            )
+            return doc
+        except PyMongoError as exc:
+            _memory_log.warning("athlete_memory Atlas write failed, using memory: %s", exc)
+    with _ATHLETE_LOCK:
+        doc = _MEMORY_ATHLETES.setdefault(user_id, default_athlete_memory(user_id))
+        doc.update(clean)
+        doc["updated_at"] = now
+        return dict(doc)
+
+
+def append_chat_turn(user_id: str, turn: Dict[str, Any]) -> None:
+    """Push one {user, coach, channel, at} turn, keeping only the last CHAT_HISTORY_TURNS."""
+    db = get_db()
+    if db is not None:
+        try:
+            db[ATHLETE_MEMORY_COLLECTION].update_one(
+                {"user_id": user_id},
+                {"$push": {"chat_history": {"$each": [turn], "$slice": -CHAT_HISTORY_TURNS}},
+                 "$set": {"updated_at": _utc_now_iso()}},
+                upsert=True,
+            )
+            return
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        doc = _MEMORY_ATHLETES.setdefault(user_id, default_athlete_memory(user_id))
+        doc["chat_history"] = (doc.get("chat_history", []) + [turn])[-CHAT_HISTORY_TURNS:]
+
+
+def set_lesson_node_status(user_id: str, node_id: str, status: str) -> Dict[str, Any]:
+    """Set one curriculum node's status; completing a node activates the next locked one."""
+    if status not in NODE_STATUSES:
+        raise ValueError(f"status must be one of {NODE_STATUSES}")
+    memory = get_athlete_memory(user_id)
+    nodes = [dict(n) for n in memory.get("curriculum_nodes") or []]
+    index = next((i for i, n in enumerate(nodes) if n.get("id") == node_id), None)
+    if index is None:
+        raise ValueError(f"Unknown lesson node: {node_id}")
+    nodes[index]["status"] = status
+    updates: Dict[str, Any] = {"curriculum_nodes": nodes}
+    if status == "completed":
+        completed_at = _utc_now_iso()
+        nodes[index]["completed_at"] = completed_at
+        nxt = next((n for n in nodes[index + 1:] if n.get("status") == "locked"), None)
+        if nxt and not any(n.get("status") == "active" for n in nodes):
+            nxt["status"] = "active"
+        # Watched by the change stream to queue Saint cadence notifications.
+        updates["last_completed_node"] = {"id": node_id, "title": nodes[index].get("title"),
+                                          "completed_at": completed_at}
+    return update_athlete_memory(user_id, updates)
+
+
+# --- Drills catalog with Atlas Search ($search) and regex fallback ---------
+
+def build_drills_catalog() -> List[Dict[str, Any]]:
+    drills: List[Dict[str, Any]] = []
+    for sport in _sports_config.SPORTS_CATALOG.values():
+        for skill in sport.skills:
+            faults = {d: f.name for f in skill.common_faults for d in f.drill_ids}
+            for drill in skill.drills:
+                drills.append({
+                    "drill_id": drill.id,
+                    "sport": sport.id,
+                    "skill_id": skill.id,
+                    "skill_name": skill.name,
+                    "title": drill.title,
+                    "instruction": drill.instruction,
+                    "focus_cue": drill.focus_cue,
+                    "target_reps": drill.target_reps,
+                    "fixes_fault": faults.get(drill.id),
+                    "youtube_url": youtube_search_url(sport.display_name, skill.name, drill.title, "drill"),
+                })
+    return drills
+
+
+def seed_drills_catalog(db: Any) -> int:
+    drills = build_drills_catalog()
+    for drill in drills:
+        db[DRILLS_COLLECTION].replace_one({"drill_id": drill["drill_id"]}, drill, upsert=True)
+    return len(drills)
+
+
+def ensure_drills_search_index(db: Any) -> Dict[str, Any]:
+    """Create the Atlas Search (Lucene) index over drill text fields if it doesn't exist."""
+    from pymongo.operations import SearchIndexModel
+
+    col = db[DRILLS_COLLECTION]
+    if any(idx["name"] == DRILLS_SEARCH_INDEX_NAME for idx in col.list_search_indexes()):
+        return {"index": DRILLS_SEARCH_INDEX_NAME, "action": "exists"}
+    definition = {"mappings": {"dynamic": False, "fields": {
+        "title": {"type": "string"}, "instruction": {"type": "string"},
+        "focus_cue": {"type": "string"}, "skill_name": {"type": "string"},
+        "fixes_fault": {"type": "string"}, "sport": {"type": "token"},
+    }}}
+    try:
+        col.create_search_index(SearchIndexModel(definition=definition, name=DRILLS_SEARCH_INDEX_NAME, type="search"))
+    except PyMongoError as exc:
+        # M0/M2 clusters cap search indexes at 3; search_drills() then uses the regex fallback.
+        return {"index": DRILLS_SEARCH_INDEX_NAME, "action": f"skipped ({exc.__class__.__name__}: "
+                f"{str(exc).split(',')[0]})"}
+    return {"index": DRILLS_SEARCH_INDEX_NAME, "action": "created"}
+
+
+# Search indexes from an earlier schema that no code queries; they fill the M0 3-index quota.
+LEGACY_SEARCH_INDEXES = (("users", "partner_text_index"), ("pro_references", "pose_vector_index"))
+
+
+def _search_index(db: Any, collection: str, name: str) -> Optional[Dict[str, Any]]:
+    try:
+        return next(iter(db[collection].list_search_indexes(name)), None)
+    except PyMongoError:
+        return None
+
+
+def drop_legacy_search_indexes(db: Any, wait_s: float = 90.0) -> List[str]:
+    """Drop the unused legacy search indexes (absent ones are ignored) and wait until Atlas frees them."""
+    import time as _time
+
+    dropped = []
+    for collection, name in LEGACY_SEARCH_INDEXES:
+        if _search_index(db, collection, name) is None:
+            continue
+        try:
+            db[collection].drop_search_index(name)
+            dropped.append(f"{collection}.{name}")
+        except PyMongoError as exc:
+            _memory_log.warning("could not drop search index %s.%s: %s", collection, name, exc)
+    deadline = _time.time() + wait_s
+    while dropped and _time.time() < deadline and any(
+            _search_index(db, c, n) is not None for c, n in LEGACY_SEARCH_INDEXES):
+        _time.sleep(2)
+    return dropped
+
+
+def wait_for_search_index(db: Any, collection: str, name: str, wait_s: float = 180.0) -> str:
+    """Poll until an Atlas search index is queryable; returns its final status."""
+    import time as _time
+
+    deadline = _time.time() + wait_s
+    while True:
+        idx = _search_index(db, collection, name)
+        status = (idx or {}).get("status", "MISSING")
+        if (idx and idx.get("queryable")) or status == "FAILED" or _time.time() >= deadline:
+            return "READY" if idx and idx.get("queryable") else status
+        _time.sleep(3)
+
+
+def search_drills(query: str, sport: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
+    """Atlas `$search` over drills_catalog, falling back to regex, then to the in-process catalog."""
+    sport_id = (sport or "").strip().lower() or None
+    text = (query or "").strip()
+    fields = ["title", "instruction", "focus_cue", "skill_name", "fixes_fault"]
+    db = get_db()
+    if db is not None and text:
+        try:
+            search: Dict[str, Any] = {"index": DRILLS_SEARCH_INDEX_NAME,
+                                      "compound": {"must": [{"text": {"query": text, "path": fields}}]}}
+            if sport_id:
+                search["compound"]["filter"] = [{"equals": {"path": "sport", "value": sport_id}}]
+            results = list(db[DRILLS_COLLECTION].aggregate([
+                {"$search": search}, {"$limit": int(limit)}, {"$project": {"_id": 0}},
+            ]))
+            if results:
+                return {"method": "atlas_search", "drills": results}
+        except PyMongoError:
+            pass
+    words = [w for w in _re.split(r"\W+", text) if len(w) > 2]
+    pattern = "|".join(_re.escape(w) for w in words) or ".*"
+    if db is not None:
+        try:
+            match: Dict[str, Any] = {"$or": [{f: {"$regex": pattern, "$options": "i"}} for f in fields]}
+            if sport_id:
+                match["sport"] = sport_id
+            results = list(db[DRILLS_COLLECTION].find(match, {"_id": 0}).limit(int(limit)))
+            if results:
+                return {"method": "regex_fallback", "drills": results}
+        except PyMongoError:
+            pass
+    regex = _re.compile(pattern, _re.I)
+    local = [d for d in build_drills_catalog()
+             if (not sport_id or d["sport"] == sport_id) and any(regex.search(str(d.get(f) or "")) for f in fields)]
+    return {"method": "in_memory_catalog", "drills": local[:limit]}
+
+
+# --- Facilities ($nearSphere on 2dsphere) ----------------------------------
+
+def find_nearby_facilities(lat: float, lng: float, limit: int = 5, max_km: float = 25.0) -> Dict[str, Any]:
+    db = get_db()
+    found: List[Dict[str, Any]] = []
+    method = "in_memory_haversine"
+    if db is not None:
+        try:
+            found = list(db[FACILITIES_COLLECTION].find({"location_geojson": {"$nearSphere": {
+                "$geometry": {"type": "Point", "coordinates": [float(lng), float(lat)]},
+                "$maxDistance": float(max_km) * 1000.0,
+            }}}, {"_id": 0}).limit(int(limit)))
+            method = "mongodb_nearSphere_2dsphere"
+        except PyMongoError:
+            found = []
+    if not found and method != "mongodb_nearSphere_2dsphere":
+        found = sorted((dict(f) for f in SEED_LONDON_FACILITIES),
+                       key=lambda f: _haversine_km(lng, lat, *f["location_geojson"]["coordinates"]))[:limit]
+    for fac in found:
+        flng, flat = fac["location_geojson"]["coordinates"]
+        fac["distance_km"] = round(_haversine_km(float(lng), float(lat), flng, flat), 2)
+    return {"method": method, "facilities": found}
+
+
+# --- Change stream: log mutations, queue Saint cadence on lesson completion ---
+
+def queue_saint_notification(notification: Dict[str, Any]) -> Dict[str, Any]:
+    doc = {"status": "queued", "queued_at": _utc_now_iso(), **notification}
+    db = get_db()
+    if db is not None:
+        try:
+            db[SAINT_QUEUE_COLLECTION].insert_one(dict(doc))
+            return doc
+        except PyMongoError:
+            pass
+    with _ATHLETE_LOCK:
+        _MEMORY_SAINT_QUEUE.append(doc)
+    return doc
+
+
+def handle_athlete_memory_change(change: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Process one change-stream event; returns the Saint notifications it queued."""
+    full = change.get("fullDocument") or {}
+    user_id = full.get("user_id") or "unknown"
+    updated = (change.get("updateDescription") or {}).get("updatedFields") or {}
+    _memory_log.info("athlete_memory %s user=%s fields=%s", change.get("operationType"), user_id,
+                     sorted(updated) if updated else "*")
+    completed = updated.get("last_completed_node") or (
+        full.get("last_completed_node") if change.get("operationType") == "replace" else None)
+    if not completed:
+        return []
+    schedule = full.get("reminder_schedule") or {}
+    return [queue_saint_notification({
+        "user_id": user_id,
+        "type": "lesson_completed",
+        "node_id": completed.get("id"),
+        "node_title": completed.get("title"),
+        "channel": schedule.get("preferred_channel", "whatsapp"),
+        "phone_number": full.get("phone_number"),
+    })]
+
+
+_WATCHER_THREAD: Optional[_threading.Thread] = None
+_WATCHER_STOP = _threading.Event()
+
+
+def start_athlete_memory_watcher() -> bool:
+    """Start a daemon thread on `db.athlete_memory.watch()`; returns False if Atlas is unavailable."""
+    global _WATCHER_THREAD
+    if _WATCHER_THREAD and _WATCHER_THREAD.is_alive():
+        return True
+    if os.environ.get("TEMPO_DISABLE_CHANGE_STREAM", "").lower() in {"1", "true", "yes"}:
+        return False
+    db = get_db()
+    if db is None:
+        return False
+
+    def _run() -> None:
+        while not _WATCHER_STOP.is_set():
+            try:
+                with db[ATHLETE_MEMORY_COLLECTION].watch(full_document="updateLookup",
+                                                         max_await_time_ms=1000) as stream:
+                    while not _WATCHER_STOP.is_set():
+                        change = stream.try_next()
+                        if change is not None:
+                            handle_athlete_memory_change(change)
+            except Exception as exc:
+                _memory_log.warning("athlete_memory change stream restarting: %s", exc)
+                _WATCHER_STOP.wait(5)
+
+    _WATCHER_STOP.clear()
+    _WATCHER_THREAD = _threading.Thread(target=_run, name="athlete-memory-watch", daemon=True)
+    _WATCHER_THREAD.start()
+    return True
+
+
+def stop_athlete_memory_watcher() -> None:
+    _WATCHER_STOP.set()

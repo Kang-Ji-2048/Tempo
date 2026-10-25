@@ -159,8 +159,9 @@ fun ScheduleScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 val daysSummary = if (uiState.daysOfWeek.isEmpty()) "No days set" else uiState.daysOfWeek.map { it.take(3) }.joinToString(", ")
+                val localFormatted = formatUtcTimeToLocal(uiState.targetTimeUtc)
                 Text(
-                    text = "$daysSummary @ ${uiState.targetTimeUtc} UTC",
+                    text = "$daysSummary @ ${uiState.targetTimeUtc} UTC ($localFormatted)",
                     style = MaterialTheme.typography.titleLarge
                 )
                 Spacer(modifier = Modifier.height(6.dp))
@@ -392,7 +393,7 @@ fun ScheduleScreen(
             }
         }
 
-        // Recent Dispatches Card
+        // Recent Dispatches Card (Real briefs or empty state)
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.large,
@@ -406,12 +407,40 @@ fun ScheduleScreen(
                     color = AccentNeonVolt
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "\"Hey athlete! Practice scheduled in ${uiState.primingLeadMinutes} mins (${uiState.targetTimeUtc} UTC). Today's focus: maintaining reach on your overhead clear.\"",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextPrimaryWhite
-                )
+                if (!uiState.recentBrief.isNullOrBlank()) {
+                    Text(
+                        text = "\"${uiState.recentBrief}\"",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimaryWhite
+                    )
+                } else {
+                    Text(
+                        text = "No recent check-in dispatches sent yet. Cadence reminders trigger ${uiState.primingLeadMinutes} mins before scheduled sessions.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted
+                    )
+                }
             }
         }
     }
 }
+
+private fun formatUtcTimeToLocal(timeUtc: String): String {
+    return try {
+        val parts = timeUtc.split(":")
+        val hour = parts[0].toInt()
+        val minute = parts[1].toInt()
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, hour)
+            set(java.util.Calendar.MINUTE, minute)
+        }
+        val localTz = java.util.TimeZone.getDefault()
+        val sdf = java.text.SimpleDateFormat("h:mm a (zzz)", java.util.Locale.getDefault()).apply {
+            timeZone = localTz
+        }
+        sdf.format(cal.time)
+    } catch (_: Exception) {
+        "$timeUtc UTC"
+    }
+}
+

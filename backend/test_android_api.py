@@ -23,7 +23,8 @@ def analysis_payload():
         'biomechanical_diagnosis': 'Measured elbow extension is 170 degrees.',
         'live_drill_prescription': 'Comfortable overhead reach practice.',
         'verification_status': 'PASS', 'demo_mode': False,
-        'pose_analysis': {'pose_vector': [.94, .8, .9, .8, .7, .9], 'used_fallback': False},
+        'pose_analysis': {'pose_vector': [.94, .8, .9, .8, .7, .9], 'used_fallback': False,
+                          'raw_angles': {'right_elbow_contact_deg': 170.0}},
     }
 
 
@@ -61,7 +62,9 @@ class AndroidBridgeTests(unittest.TestCase):
         self.assertEqual(record['kinematic_vector'], analysis_payload()['pose_analysis']['pose_vector'])
         self.assertEqual(record['pipeline_session_id'], 'canonical-analysis-id')
         self.assertEqual(record['active_widgets'][0]['widget_type'], 'DrillCardWidget')
-        self.assertNotIn('overall_score', record['gemini_feedback'])
+        # The measured, threshold-consistent score drives the adaptive curriculum, so it is reported.
+        self.assertEqual(record['gemini_feedback']['overall_score'], record['overall_score'])
+        self.assertEqual(record['adaptation']['action'], 'no_active_lesson')
         self.assertEqual(record['storage_mode'], 'in_memory_fallback')
         self.assertNotIn('telemetry', record)
 

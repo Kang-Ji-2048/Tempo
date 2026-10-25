@@ -30,16 +30,46 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import com.tempo.app.feature.sdui.data.SduiRepository
 import java.io.File
 import javax.inject.Inject
+
+data class AngleComparison(val label: String, val athleteDeg: Double, val proDeg: Double, val deltaDeg: Double)
+
+/** Athlete vs. matched pro angles from the session's `pro_comparison_card`. */
+data class ProComparisonUi(
+    val matchedPro: String,
+    val sport: String?,
+    val similarityScore: Double?,
+    val searchMethod: String?,
+    val validated: Boolean,
+    val angles: List<AngleComparison>,
+)
+
+/** How this clip changed the athlete's curriculum (`adaptation` on the session). */
+data class CurriculumAdaptationUi(
+    val action: String,
+    val nodeTitle: String?,
+    val nextNodeTitle: String?,
+    val overallScore: Int?,
+    val passScore: Int,
+    val reason: String? = null,
+) {
+    val lessonCompleted: Boolean get() = action == "lesson_completed"
+    val remedialAssigned: Boolean get() = action == "remedial_assigned"
+    /** The clip couldn't grade the lesson (no reliable pose, or no overhead contact for an overhead skill). */
+    val lessonUnchanged: Boolean get() = action == "not_measured" || action == "overhead_not_captured"
+}
 
 @HiltViewModel
 class AnalysisViewModel @Inject constructor(
     private val sessionRepository: SessionRepository,
     private val sessionDao: SessionDao,
     private val widgetParser: WidgetParser,
+    private val sduiRepository: SduiRepository,
     private val videoPoseExtractor: VideoPoseExtractor,
     private val keyframeStripExtractor: KeyframeStripExtractor,
     @ApplicationContext private val context: Context,
@@ -50,6 +80,10 @@ class AnalysisViewModel @Inject constructor(
     private var correctionsJob: Job? = null
     private val _uiState = MutableStateFlow(AnalysisUiState(sessionId = sessionId))
     val uiState = _uiState.asStateFlow()
+    private val _proComparison = MutableStateFlow<ProComparisonUi?>(null)
+    val proComparison = _proComparison.asStateFlow()
+    private val _adaptation = MutableStateFlow<CurriculumAdaptationUi?>(null)
+    val adaptation = _adaptation.asStateFlow()
 
     init { startPolling() }
 
@@ -74,7 +108,15 @@ class AnalysisViewModel @Inject constructor(
     }
 
     fun onWidgetAction(action: WidgetAction) {
-        // Widget completion persistence is a separate feature.
+        viewModelScope.launch {
+            when (val res = sduiRepository.postAction(sessionId, action)) {
+                is NetworkResult.Success -> {
+                    _uiState.update { it.copy(widgets = res.data) }
+                }
+                is NetworkResult.Error -> Unit
+                is NetworkResult.Loading -> Unit
+            }
+        }
     }
 
     private fun fail(message: String) {
@@ -132,6 +174,8 @@ class AnalysisViewModel @Inject constructor(
                                             (obj["observation"] as? JsonPrimitive)?.contentOrNull.orEmpty())
                                     }
                                     sessionDao.updateStatus(sessionId, "COMPLETED")
+                                    _proComparison.value = parseProComparison(feedback?.get("pro_comparison_card") as? JsonObject)
+                                    _adaptation.value = parseAdaptation(feedback?.get("adaptation") as? JsonObject)
                                     _uiState.update { it.copy(step = AnalysisStep.COMPLETED, statusCopy = "Analysis ready",
                                         debrief = BiomechanicalDebrief(
                                             overallScore = (feedback?.get("overall_score") as? JsonPrimitive)?.intOrNull?.takeIf { it in 0..100 },
@@ -140,7 +184,11 @@ class AnalysisViewModel @Inject constructor(
                                             matchedArchetype = text("matched_archetype"),
                                             audioCue = text("concise_audio_cue"),
                                             voiceNoteScript = text("coach_voice_note_script"),
-                                            voiceNoteUrl = text("voice_note_url")
+                                            voiceNoteUrl = text("voice_note_url"),
+                                            llmSource = record.llmSource ?: (feedback?.get("llm_source") as? JsonPrimitive)?.contentOrNull,
+                                            llmModel = record.llmModel ?: (feedback?.get("llm_model") as? JsonPrimitive)?.contentOrNull,
+                                            llmError = record.llmError ?: (feedback?.get("llm_error") as? JsonPrimitive)?.contentOrNull,
+                                            videoUsed = record.videoUsed ?: (feedback?.get("video_used") as? JsonPrimitive)?.contentOrNull?.toBooleanStrictOrNull()
                                         ),
                                         kineticPhases = phases, widgets = widgetParser.parse(record.activeWidgets.orEmpty()), isPolling = false,
                                         feedbackNotice = when {
@@ -178,6 +226,41 @@ class AnalysisViewModel @Inject constructor(
                 fail("Cannot read upload status. Check local storage and tap Retry.")
             }
         }
+    }
+
+    private fun parseProComparison(card: JsonObject?): ProComparisonUi? {
+        card ?: return null
+        val angles = (card["angles"] as? JsonArray).orEmpty().mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            AngleComparison(
+                label = (obj["label"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null,
+                athleteDeg = (obj["athlete_deg"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null,
+                proDeg = (obj["pro_deg"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null,
+                deltaDeg = (obj["delta_deg"] as? JsonPrimitive)?.doubleOrNull ?: return@mapNotNull null,
+            )
+        }
+        val pro = (card["matched_pro"] as? JsonPrimitive)?.contentOrNull ?: return null
+        return ProComparisonUi(
+            matchedPro = pro,
+            sport = (card["sport"] as? JsonPrimitive)?.contentOrNull,
+            similarityScore = (card["similarity_score"] as? JsonPrimitive)?.doubleOrNull,
+            searchMethod = (card["search_method"] as? JsonPrimitive)?.contentOrNull,
+            validated = (card["validation_status"] as? JsonPrimitive)?.contentOrNull == "validated",
+            angles = angles,
+        )
+    }
+
+    private fun parseAdaptation(obj: JsonObject?): CurriculumAdaptationUi? {
+        obj ?: return null
+        fun text(key: String) = (obj[key] as? JsonPrimitive)?.contentOrNull
+        return CurriculumAdaptationUi(
+            action = text("action") ?: return null,
+            nodeTitle = text("node_title"),
+            nextNodeTitle = text("next_node_title"),
+            overallScore = (obj["overall_score"] as? JsonPrimitive)?.intOrNull,
+            passScore = (obj["pass_score"] as? JsonPrimitive)?.intOrNull ?: 80,
+            reason = text("reason"),
+        )
     }
 
     private fun loadVisualCorrections(phases: List<KineticPhaseUiModel>) {

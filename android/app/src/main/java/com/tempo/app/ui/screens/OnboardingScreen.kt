@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.tempo.app.feature.onboarding.OnboardingNavigationEvent
 import com.tempo.app.feature.onboarding.OnboardingViewModel
+import com.tempo.app.feature.sdui.model.CheckInScheduleWidget
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.network.models.UserProfileDto
 import com.tempo.app.ui.navigation.Screen
@@ -182,11 +183,38 @@ fun OnboardingScreen(
                     contentAlignment = Alignment.TopCenter
                 ) {
                     if (uiState.currentWidget != null) {
-                        WidgetRenderer(
-                            widget = uiState.currentWidget!!,
-                            onAction = { action -> viewModel.onWidgetAction(action) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            WidgetRenderer(
+                                widget = uiState.currentWidget!!,
+                                onAction = { action -> viewModel.onWidgetAction(action) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            // The schedule card has no submit of its own: confirm days/time here.
+                            if (uiState.currentWidget is CheckInScheduleWidget) {
+                                Button(
+                                    onClick = viewModel::submitSchedule,
+                                    enabled = !uiState.isLoading,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = AccentNeonVolt,
+                                        contentColor = BackgroundOnyx
+                                    )
+                                ) {
+                                    if (uiState.isLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(22.dp),
+                                            color = BackgroundOnyx,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("Build my plan", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
                     } else if (uiState.isLoading) {
                         Box(
                             modifier = Modifier
@@ -308,18 +336,33 @@ private fun PermissionsAndSummaryView(
         )
     }
 
-    // Health Connect mock permission toggle
+    val healthConnectManager = remember { com.tempo.app.feature.biometrics.HealthConnectManager(context) }
+    var healthConnectAvailable by remember { mutableStateOf(healthConnectManager.isAvailable()) }
     var healthConnectGranted by remember { mutableStateOf(false) }
+
+    val healthConnectLauncher = rememberLauncherForActivityResult(
+        contract = androidx.health.connect.client.PermissionController.createRequestPermissionResultContract()
+    ) { grantedPermissions ->
+        healthConnectGranted = grantedPermissions.containsAll(healthConnectManager.permissions)
+    }
+
+    LaunchedEffect(Unit) {
+        if (healthConnectAvailable) {
+            healthConnectGranted = healthConnectManager.hasPermissions()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         permissionStatusMap = results
-        healthConnectGranted = true // Auto-link Health Connect when user grants hardware access
+        if (healthConnectAvailable && !healthConnectGranted) {
+            healthConnectLauncher.launch(healthConnectManager.permissions)
+        }
     }
 
     val allHardwareGranted = permissionStatusMap.values.all { it }
-    val allPermissionsGranted = allHardwareGranted && healthConnectGranted
+    val allPermissionsGranted = allHardwareGranted && (!healthConnectAvailable || healthConnectGranted)
 
     Column(
         modifier = Modifier
@@ -358,8 +401,8 @@ private fun PermissionsAndSummaryView(
                     )
                 }
 
-                val sportName = userProfile?.sport?.replaceFirstChar { it.uppercase() } ?: "Badminton"
-                val archetype = userProfile?.targetArchetype ?: "Viktor Axelsen"
+                val sportName = userProfile?.sport?.replaceFirstChar { it.uppercase() } ?: "Selected Sport"
+                val archetype = userProfile?.targetArchetype?.ifBlank { "Pro Benchmark" } ?: "Pro Benchmark"
                 val playstyle = userProfile?.playstyle?.replaceFirstChar { it.uppercase() } ?: "Aggressive"
                 val level = userProfile?.level?.replaceFirstChar { it.uppercase() } ?: "Intermediate"
                 val goal = userProfile?.goal?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Overhead Power"
@@ -451,13 +494,27 @@ private fun PermissionsAndSummaryView(
                 )
 
                 // 5. Health Connect
-                PermissionRow(
-                    icon = Icons.Rounded.Favorite,
-                    title = "Health Connect",
-                    reason = "Correlate cardiovascular fatigue and strain with kinematic breakdown",
-                    granted = healthConnectGranted,
-                    onToggle = { healthConnectGranted = !healthConnectGranted }
-                )
+                if (!healthConnectAvailable) {
+                    PermissionRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = "Health Connect",
+                        reason = "Health Connect not available on this device",
+                        granted = false,
+                        onToggle = null
+                    )
+                } else {
+                    PermissionRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = "Health Connect",
+                        reason = "Correlate cardiovascular fatigue and strain with kinematic breakdown",
+                        granted = healthConnectGranted,
+                        onToggle = {
+                            if (!healthConnectGranted) {
+                                healthConnectLauncher.launch(healthConnectManager.permissions)
+                            }
+                        }
+                    )
+                }
             }
         }
 

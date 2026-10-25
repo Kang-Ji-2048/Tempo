@@ -32,6 +32,7 @@ interface UploadWorkerEntryPoint {
     fun sessionDao(): SessionDao
     fun json(): Json
     fun telemetryRepository(): com.tempo.app.feature.biometrics.TelemetryRepository
+    fun playerIdentity(): com.tempo.app.data.PlayerIdentity
 }
 
 /**
@@ -49,21 +50,21 @@ class UploadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        val sessionId = inputData.getString(KEY_SESSION_ID) ?: UUID.randomUUID().toString()
-        val videoPath = inputData.getString(KEY_VIDEO_PATH)
-            ?: return Result.failure(workDataOf("error" to "Missing video_path input"))
-        val userId = inputData.getString(KEY_USER_ID)?.trim()?.takeIf { it.isNotBlank() }
-            ?: return Result.failure(workDataOf("error" to "Missing player ID"))
-        val sport = inputData.getString(KEY_SPORT) ?: "badminton"
-        val strokeType = inputData.getString(KEY_STROKE_TYPE) ?: "overhead_clear"
-        val targetArchetype = inputData.getString(KEY_TARGET_ARCHETYPE) ?: "Axelsen"
-        val userIntent = inputData.getString(KEY_USER_INTENT)
-            ?: "Working on steep angle and early high contact reach"
-
         val entryPoint = EntryPointAccessors.fromApplication(
             applicationContext,
             UploadWorkerEntryPoint::class.java
         )
+
+        val sessionId = inputData.getString(KEY_SESSION_ID) ?: UUID.randomUUID().toString()
+        val videoPath = inputData.getString(KEY_VIDEO_PATH)
+            ?: return Result.failure(workDataOf("error" to "Missing video_path input"))
+        val userId = inputData.getString(KEY_USER_ID)?.trim()?.takeIf { it.isNotBlank() }
+            ?: entryPoint.playerIdentity().userId
+        val sport = inputData.getString(KEY_SPORT) ?: "badminton"
+        val strokeType = inputData.getString(KEY_STROKE_TYPE) ?: "overhead_clear"
+        val targetArchetype = inputData.getString(KEY_TARGET_ARCHETYPE)
+        val userIntent = inputData.getString(KEY_USER_INTENT)
+            ?: "Working on steep angle and early high contact reach"
         val tempoApi = entryPoint.tempoApi()
         val sessionDao = entryPoint.sessionDao()
         val json = entryPoint.json()

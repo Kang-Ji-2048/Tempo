@@ -57,6 +57,10 @@ import com.tempo.app.feature.correction.ui.KeyframeStripView
 import com.tempo.app.feature.correction.ui.VisualCorrectionPlayer
 import com.tempo.app.feature.sdui.ui.WidgetRenderer
 import com.tempo.app.ui.navigation.Screen
+import com.tempo.app.feature.analysis.CurriculumAdaptationUi
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import com.tempo.app.feature.analysis.ProComparisonUi
 import com.tempo.app.ui.theme.AccentNeonVolt
 import com.tempo.app.ui.theme.BackgroundOnyx
 import com.tempo.app.ui.theme.CardBorderSubtle
@@ -75,6 +79,8 @@ fun AnalysisScreen(
     viewModel: AnalysisViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val proComparison by viewModel.proComparison.collectAsStateWithLifecycle()
+    val adaptation by viewModel.adaptation.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = modifier
@@ -204,6 +210,12 @@ fun AnalysisScreen(
             item {
                 DebriefHeaderCard(debrief = uiState.debrief!!)
             }
+            adaptation?.takeIf { it.lessonCompleted || it.remedialAssigned || it.lessonUnchanged }?.let { change ->
+                item { AdaptationBanner(change) }
+            }
+            proComparison?.takeIf { it.angles.isNotEmpty() }?.let { comparison ->
+                item { ProComparisonCard(comparison) }
+            }
 
             item {
                 OutlinedButton(
@@ -306,6 +318,31 @@ private fun DebriefHeaderCard(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Overall score + Benchmark
+            val isGemini = debrief.llmSource == "gemini"
+            val chipBg = if (isGemini) AccentNeonVolt.copy(alpha = 0.15f) else Color(0xFF3E1212)
+            val chipBorder = if (isGemini) AccentNeonVolt.copy(alpha = 0.6f) else Color(0xFFE53935)
+            val chipColor = if (isGemini) AccentNeonVolt else Color(0xFFFF8A80)
+            val chipText = if (isGemini) {
+                "AI: Gemini 4 Argon" + if (debrief.videoUsed == true) " (Video + Pose)" else " (Pose Data)"
+            } else {
+                "AI: fallback (" + (debrief.llmError?.take(40) ?: "offline / rule-based") + ")"
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(chipBg)
+                    .border(1.dp, chipBorder, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = chipText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = chipColor
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -426,6 +463,98 @@ private fun DebriefHeaderCard(
                     )
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun AdaptationBanner(adaptation: CurriculumAdaptationUi) {
+    val passed = adaptation.lessonCompleted
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (passed) AccentNeonVolt.copy(alpha = 0.12f) else SurfaceCharcoal
+        ),
+        border = BorderStroke(1.dp, if (passed) AccentNeonVolt.copy(alpha = 0.6f) else CardBorderSubtle)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = when {
+                    passed -> "LESSON COMPLETE"
+                    adaptation.lessonUnchanged -> "LESSON UNCHANGED"
+                    else -> "LESSON ADAPTED"
+                },
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+                color = AccentNeonVolt
+            )
+            Text(
+                text = if (passed) {
+                    "${adaptation.nodeTitle ?: "This lesson"} passed with ${adaptation.overallScore ?: "-"}/100." +
+                        (adaptation.nextNodeTitle?.let { " Unlocked: $it." } ?: " You've finished the path!")
+                } else if (adaptation.action == "not_measured") {
+                    "Thea couldn't measure your swing in this clip, so your lesson stays where it was. " +
+                        "Her filming tips are below; record again side-on with your full body in frame."
+                } else if (adaptation.lessonUnchanged) {
+                    adaptation.reason ?: "This clip didn't grade your lesson."
+                } else {
+                    "Score ${adaptation.overallScore ?: "-"}/100. You need ${adaptation.passScore}+ to pass " +
+                        "${adaptation.nodeTitle ?: "this lesson"}. A targeted drill and quiz were added below and to Home."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimaryWhite
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProComparisonCard(comparison: ProComparisonUi) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCharcoal),
+        border = BorderStroke(1.dp, CardBorderSubtle)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    text = "YOU vs ${comparison.matchedPro.uppercase()}",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold),
+                    color = AccentNeonVolt
+                )
+                comparison.similarityScore?.let {
+                    Text("${(it * 100).roundToInt()}% similar", style = MaterialTheme.typography.labelSmall, color = TextSecondarySilver)
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text("Joint", modifier = Modifier.weight(1.6f), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                Text("You", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                Text("Pro", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                Text("Delta", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+            comparison.angles.forEach { angle ->
+                val close = abs(angle.deltaDeg) <= 5.0
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(angle.label, modifier = Modifier.weight(1.6f), style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite)
+                    Text("${angle.athleteDeg.roundToInt()}°", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = TextPrimaryWhite, fontWeight = FontWeight.Bold)
+                    Text("${angle.proDeg.roundToInt()}°", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = TextSecondarySilver)
+                    Text(
+                        text = (if (angle.deltaDeg > 0) "+" else "") + "${angle.deltaDeg.roundToInt()}°",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (close) AccentNeonVolt else ErrorRed,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Text(
+                text = if (comparison.validated) "Reference angles validated." else
+                    "Pro reference angles are illustrative, not lab-measured.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
         }
     }
 }

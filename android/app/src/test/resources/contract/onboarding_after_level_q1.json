@@ -1,0 +1,39 @@
+{
+  "step_id": "level_q2",
+  "progress": 0.35,
+  "coach_message": "Nice. One more.",
+  "widget": {
+    "widget_type": "ConceptQuizWidget",
+    "id": "level_q2",
+    "question": "What does a split-step do for you?",
+    "options": [
+      "Adds topspin to your next shot",
+      "Loads your legs so you react the moment your opponent strikes",
+      "Slows the rally down",
+      "It only matters when serving"
+    ],
+    "correct_index": 1,
+    "explanation": "Landing the split-step as your opponent strikes lets you push off in any direction."
+  },
+  "is_completed": false,
+  "user_profile": null,
+  "athlete_memory": {
+    "user_id": "b0368d9e-df91-4a54-9dd4-9a8e85727ce3",
+    "assigned_drills": [],
+    "chat_history": [],
+    "created_at": "2026-10-25T01:26:41.075611+00:00",
+    "curriculum_nodes": [],
+    "focus_note": null,
+    "intensity": null,
+    "last_completed_node": null,
+    "level": null,
+    "motivation_why": null,
+    "phone_number": null,
+    "recent_flaws": [],
+    "reminder_schedule": null,
+    "skill_focus": "one_hand_backhand",
+    "sport": "tennis",
+    "updated_at": "2026-10-25T01:26:43.128971+00:00"
+  },
+  "llm_source": null
+}

@@ -11,6 +11,7 @@ import copy
 from datetime import datetime, timezone
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -23,11 +24,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 if __package__:
-    from . import db_mongo
+    from . import argon_analysis, db_mongo, sports_config
+    from .api.v1 import onboarding as onboarding_api
     from .auth import own, principal, authenticate
     from .telemetry_time import require_recent
 else:
-    import db_mongo
+    import argon_analysis, db_mongo, sports_config
+    from api.v1 import onboarding as onboarding_api
     from auth import own, principal, authenticate
     from telemetry_time import require_recent
 
@@ -35,6 +38,8 @@ logger = logging.getLogger(__name__)
 _MEMORY: dict[str, dict[str, Any]] = {}
 _LOCK = Lock()
 MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+LESSON_PASS_SCORE = 80  # overall_score at or above this completes the lesson node
+MAX_RECENT_FLAWS = 5
 
 
 def _now() -> str:
@@ -53,10 +58,221 @@ class SessionMetadata(BaseModel):
     session_id: str | None = Field(default=None, pattern=r'^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$')
     user_intent: str | None = Field(default=None, max_length=2000)
     user_id: str = Field(min_length=1, max_length=128, pattern=r"^\S(?:.*\S)?$")
-    sport: Literal['badminton', 'tennis']
-    stroke_type: Literal['overhead_clear', 'jump_smash', 'smash', 'serve', 'overhead_serve', 'overhead_smash']
+    sport: str = Field(default='badminton', min_length=1)
+    stroke_type: str = Field(default='overhead_clear', min_length=1)
     target_archetype: str | None = None
+    # Lesson the clip was recorded for; defaults to the athlete's active curriculum node.
+    node_id: str | None = Field(default=None, max_length=128)
     telemetry: list[BiometricPoint] = Field(default_factory=list, max_length=10000)
+
+
+class WidgetActionRequest(BaseModel):
+    session_id: str | None = Field(default='', max_length=128)
+    action_type: str = Field(min_length=1, max_length=64)
+    widget_id: str = Field(min_length=1, max_length=256)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+def _apply_widget_action(user_id: str, widgets: list[dict[str, Any]], req: WidgetActionRequest) -> list[dict[str, Any]]:
+    """Apply an SDUI action to the widget list and record drill/quiz completion in athlete_memory."""
+    widgets = copy.deepcopy(widgets)
+    payload = req.payload
+    if req.action_type == 'DrillCompleted':
+        widgets = [w for w in widgets if not (w.get('widget_type') == 'DrillCardWidget' and w.get('id') == req.widget_id)]
+        memory = db_mongo.get_athlete_memory(user_id)
+        drills = memory.get('assigned_drills') or []
+        done = next((d for d in drills if d.get('id') == req.widget_id), None)
+        nodes = [dict(n) for n in memory.get('curriculum_nodes') or []]
+        node_id = (done or {}).get('node_id') or next((n['id'] for n in nodes if n.get('status') == 'active'), None)
+        for node in nodes:
+            if node['id'] == node_id:
+                node['completed_drills'] = (node.get('completed_drills') or []) + [{
+                    'drill_id': req.widget_id, 'reps_completed': payload.get('reps_completed'), 'at': _now()}]
+        updates: dict[str, Any] = {'curriculum_nodes': nodes}
+        if done:
+            updates['assigned_drills'] = [d for d in drills if d.get('id') != req.widget_id]
+        if nodes:
+            db_mongo.update_athlete_memory(user_id, updates)
+    elif req.action_type == 'QuizAnswered':
+        selected = payload.get('selected_index')
+        for w in widgets:
+            if w.get('widget_type') == 'ConceptQuizWidget' and w.get('id') == req.widget_id:
+                w['answered_index'] = selected
+        memory = db_mongo.get_athlete_memory(user_id)
+        nodes = [dict(n) for n in memory.get('curriculum_nodes') or []]
+        hit = False
+        for node in nodes:
+            quiz = node.get('remedial_quiz')
+            if quiz and quiz.get('id') == req.widget_id:
+                node['remedial_quiz'] = {**quiz, 'answered_index': selected,
+                                         'is_correct': selected == quiz.get('correct_index'), 'answered_at': _now()}
+                hit = True
+        if hit:
+            db_mongo.update_athlete_memory(user_id, {'curriculum_nodes': nodes})
+    elif req.action_type in ('SlotPicked', 'ScheduleChanged'):
+        for w in widgets:
+            if w.get('widget_type') == 'CheckInScheduleWidget':
+                if payload.get('slot_id'):
+                    w['selected_slot_id'] = payload['slot_id']
+                for key in ('days_of_week', 'target_time_utc'):
+                    if key in payload:
+                        w[key] = payload[key]
+    elif req.action_type == 'ChoiceSelected':
+        for w in widgets:
+            if w.get('widget_type') == 'ChoiceWidget' and w.get('id') == req.widget_id:
+                w['selected_option_ids'] = payload.get('option_ids', [])
+    return widgets
+
+
+# --- Live camera drill mode: on-device 33-landmark pose -> server-side form cues ---------------
+
+OVERHEAD_SKILLS = {'overhead_clear', 'jump_smash'}
+LIVE_MAX_FPS = 30
+LIVE_METRICS_INTERVAL_MS = 500
+LIVE_FRAMING_CUE_INTERVAL_MS = 10_000
+KNEE_LOAD_TARGET_DEG = 160.0   # knees should bend below this while loading
+RECOVERY_TARGET_MS = 1500      # back to base within this after the shot
+SWING_SPEED_START = 1.6        # normalized frame-widths/s; groundstroke rep detection
+SWING_SPEED_END = 0.5
+# MediaPipe Pose indices (right-handed athlete, matching etl_pose).
+R_SHOULDER, R_ELBOW, R_WRIST, R_HIP, R_KNEE, R_ANKLE, L_HIP = 12, 14, 16, 24, 26, 28, 23
+
+
+class LivePoseFrame(BaseModel):
+    type: Literal['pose']
+    timestamp_ms: int = Field(ge=0)
+    # 33 x [x, y, z, visibility] in normalized image coordinates.
+    landmarks: list[list[float]] = Field(min_length=33, max_length=33)
+    aspect: float = Field(default=0.75, gt=0.1, lt=10)  # image width / height
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+def _angle_deg(a: list[float], b: list[float], c: list[float], aspect: float) -> float:
+    """Interior angle at b in the image plane, correcting x for the frame's aspect ratio."""
+    v1 = ((a[0] - b[0]) * aspect, a[1] - b[1])
+    v2 = ((c[0] - b[0]) * aspect, c[1] - b[1])
+    n1, n2 = math.hypot(*v1), math.hypot(*v2)
+    if n1 == 0 or n2 == 0:
+        return 180.0
+    cos = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2)))
+    return math.degrees(math.acos(cos))
+
+
+class LiveFormCoach:
+    """Per-connection rep detector that grades each rep against the athlete's active skill."""
+
+    def __init__(self, user_id: str) -> None:
+        self.user_id = user_id
+        self.reps = 0
+        self.reload()
+        self._reset_rep()
+        self.last_ts: int | None = None
+        self.last_wrist: tuple[float, float] | None = None
+        self.last_metrics_ms = -LIVE_METRICS_INTERVAL_MS
+        self.last_framing_cue_ms = -LIVE_FRAMING_CUE_INTERVAL_MS
+        self.knee_window: list[tuple[int, float]] = []
+        self.base_hip_x: float | None = None
+        self.recovery_from_ms: int | None = None
+        self.slow_recovery = False
+
+    def reload(self) -> dict[str, Any]:
+        memory = db_mongo.get_athlete_memory(self.user_id)
+        self.sport = memory.get('sport') or 'badminton'
+        self.skill = memory.get('skill_focus') or ('overhead_clear' if self.sport == 'badminton' else 'forehand')
+        self.level = memory.get('level')
+        self.threshold = argon_analysis.level_threshold(self.sport, self.skill, self.level)
+        active = next((n for n in memory.get('curriculum_nodes') or [] if n.get('status') == 'active'), None)
+        self.lesson = active.get('title') if active else None
+        return {'type': 'session', 'sport': self.sport, 'skill': self.skill, 'level': self.level,
+                'threshold_deg': self.threshold, 'active_lesson': self.lesson,
+                'mode': 'overhead_peak' if self.skill in OVERHEAD_SKILLS else 'swing_speed'}
+
+    def _reset_rep(self) -> None:
+        self.in_rep = False
+        self.peak_value = -math.inf
+        self.peak_elbow: float | None = None
+        self.peak_ms = 0
+
+    def ingest(self, frame: LivePoseFrame) -> list[dict[str, Any]]:
+        if self.last_ts is not None and frame.timestamp_ms - self.last_ts < 1000 // LIVE_MAX_FPS:
+            return []
+        lm, aspect, now = frame.landmarks, frame.aspect, frame.timestamp_ms
+        dt_s = (now - self.last_ts) / 1000 if self.last_ts is not None and now > self.last_ts else None
+        self.last_ts = now
+        out: list[dict[str, Any]] = []
+
+        key = (R_SHOULDER, R_ELBOW, R_WRIST, R_HIP, R_KNEE, R_ANKLE)
+        if any(len(lm[i]) < 4 or lm[i][3] < 0.5 for i in key):
+            self.last_wrist = None
+            if now - self.last_framing_cue_ms >= LIVE_FRAMING_CUE_INTERVAL_MS:
+                self.last_framing_cue_ms = now
+                out.append(self._cue('Step back so your whole body is visible.', now, kind='framing'))
+            return out
+
+        elbow = _angle_deg(lm[R_SHOULDER], lm[R_ELBOW], lm[R_WRIST], aspect)
+        knee = _angle_deg(lm[R_HIP], lm[R_KNEE], lm[R_ANKLE], aspect)
+        hip_x = (lm[R_HIP][0] + lm[L_HIP][0]) / 2
+        self.knee_window = [(t, k) for t, k in self.knee_window if now - t <= 1500] + [(now, knee)]
+        wrist = (lm[R_WRIST][0] * aspect, lm[R_WRIST][1])
+        speed = (math.dist(wrist, self.last_wrist) / dt_s) if dt_s and self.last_wrist else 0.0
+        self.last_wrist = wrist
+
+        if self.recovery_from_ms is not None and self.base_hip_x is not None:
+            if abs(hip_x - self.base_hip_x) <= 0.05:
+                self.slow_recovery = now - self.recovery_from_ms > RECOVERY_TARGET_MS
+                self.recovery_from_ms = None
+            elif now - self.recovery_from_ms > RECOVERY_TARGET_MS:
+                self.slow_recovery, self.recovery_from_ms = True, None
+
+        if self.skill in OVERHEAD_SKILLS:
+            raised = lm[R_WRIST][1] < lm[R_SHOULDER][1] - 0.05
+            height = -lm[R_WRIST][1]
+            if raised and not self.in_rep:
+                self.in_rep, self.base_hip_x = True, self.base_hip_x if self.recovery_from_ms else hip_x
+            rep_done = self.in_rep and not raised
+        else:
+            height = speed
+            if speed >= SWING_SPEED_START and not self.in_rep:
+                self.in_rep, self.base_hip_x = True, hip_x
+            rep_done = self.in_rep and speed <= SWING_SPEED_END and self.peak_elbow is not None
+        if self.in_rep and height > self.peak_value:
+            self.peak_value, self.peak_elbow, self.peak_ms = height, elbow, now
+
+        if rep_done:
+            out.append(self._grade_rep(now))
+        if now - self.last_metrics_ms >= LIVE_METRICS_INTERVAL_MS:
+            self.last_metrics_ms = now
+            out.append({'type': 'metrics', 'elbow_deg': round(elbow, 1), 'knee_deg': round(knee, 1),
+                        'reps': self.reps, 'in_rep': self.in_rep, 'pose_visible': True, 'timestamp_ms': now})
+        return out
+
+    def _grade_rep(self, now: int) -> dict[str, Any]:
+        self.reps += 1
+        elbow = self.peak_elbow or 0.0
+        load = min(k for _, k in self.knee_window)
+        deficit = self.threshold - elbow
+        if deficit > 8:
+            cue, focus = 'Straighten your elbow and reach higher at contact.', 'elbow'
+        elif deficit > 0:
+            cue, focus = 'Almost there. Extend a little more at contact.', 'elbow'
+        elif load > KNEE_LOAD_TARGET_DEG:
+            cue, focus = 'Bend your knees more before you swing.', 'knee'
+        elif self.slow_recovery:
+            cue, focus = 'Recover to base faster after each shot.', 'recovery'
+        else:
+            cue, focus = 'Great rep. Keep that full extension.', 'positive'
+        self.slow_recovery = False
+        self.recovery_from_ms = now
+        self._reset_rep()
+        msg = self._cue(cue, now, kind=focus)
+        msg.update(rep=self.reps, metrics={'elbow_at_contact_deg': round(elbow, 1), 'min_knee_deg': round(load, 1),
+                                           'threshold_deg': self.threshold})
+        return msg
+
+    def _cue(self, text: str, now: int, kind: str) -> dict[str, Any]:
+        return {'type': 'cue', 'cue': text, 'focus': kind, 'skill': self.skill, 'timestamp_ms': now,
+                'source': 'live_pose_rules', 'vision_analyzed': True}
 
 
 class UserSchedule(BaseModel):
@@ -68,6 +284,7 @@ class UserSchedule(BaseModel):
     priming_lead_minutes: int = Field(default=30, ge=5, le=120)
     preferred_channel: Literal['whatsapp', 'push', 'sms'] = 'whatsapp'
     is_active: bool = True
+    recent_brief: str | None = None
 
 
 def _put(collection: str, key: str, record: dict[str, Any]) -> None:
@@ -102,7 +319,113 @@ def _get(collection: str, key: str) -> dict[str, Any] | None:
     return None
 
 
-def _feedback(payload: dict[str, Any]) -> dict[str, Any]:
+def _pro_comparison_card(payload: dict[str, Any]) -> dict[str, Any]:
+    """Athlete vs. matched-pro angles; the best match document carries the reference angles."""
+    comparison = payload['pro_comparison']
+    matches = comparison.get('all_pro_matches') or []
+    best = next((m for m in matches if m.get('player_name') == comparison.get('matched_pro')), matches[0] if matches else {})
+    return {
+        'matched_pro': comparison.get('matched_pro'), 'country': comparison.get('country'),
+        'sport': comparison.get('sport'), 'stroke_type': comparison.get('stroke_type'),
+        'similarity_score': comparison.get('similarity_score'), 'search_method': comparison.get('search_method'),
+        'validation_status': comparison.get('validation_status', 'illustrative_unvalidated'),
+        'angles': argon_analysis.compute_pro_deltas(payload['pose_analysis'].get('raw_angles', {}), best),
+    }
+
+
+def _remedial_quiz(quiz_id: str, sport: str, elbow: float, threshold: float, level: str | None,
+                   pro_name: str | None, pro_elbow: float | None) -> dict[str, Any]:
+    """A quiz grounded in this clip's measured elbow angle and the athlete's level target."""
+    correct = f'{threshold:.0f} deg or more: near-full extension at contact'
+    distractors = [f'About {max(elbow - 15, 90):.0f} deg: keep the arm bent for control',
+                   '90 deg: elbow square to the shoulder', 'It does not matter if the swing is fast']
+    shift = int(hashlib.sha256(quiz_id.encode()).hexdigest(), 16) % 4
+    options = distractors[:shift] + [correct] + distractors[shift:]
+    pro = f'{pro_name} reaches {pro_elbow:.0f} deg. ' if pro_name and pro_elbow else ''
+    return {
+        'widget_type': 'ConceptQuizWidget', 'id': quiz_id,
+        'question': f'Your elbow measured {elbow:.0f} deg at contact. What should you aim for at '
+                    f'{level or "your"} level in {sport.replace("_", " ")}?',
+        'options': options, 'correct_index': shift,
+        'explanation': f'{pro}Hitting at {threshold:.0f} deg or more raises your contact point, '
+                       'giving a steeper, deeper shot with less shoulder strain.',
+        'answered_index': None,
+    }
+
+
+def _adapt_curriculum(user_id: str, session_id: str, metadata: SessionMetadata, payload: dict[str, Any],
+                      overall_score: int | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Complete the lesson on a passing score, otherwise attach a remedial drill and quiz to it.
+
+    Unmeasured clips (no reliable body) and swings that missed the overhead contact an overhead skill
+    needs leave the curriculum untouched; the session still returns Thea's guidance.
+    """
+    pose = payload['pose_analysis']
+    if overall_score is None or pose.get('used_fallback') or not pose.get('raw_angles'):
+        return {'overall_score': None, 'pass_score': LESSON_PASS_SCORE, 'action': 'not_measured',
+                'reason': pose.get('status')}, []
+    memory = db_mongo.get_athlete_memory(user_id)
+    skill = memory.get('skill_focus') or metadata.stroke_type
+    if skill in OVERHEAD_SKILLS and pose.get('overhead_contact_detected') is False:
+        return {'overall_score': overall_score, 'pass_score': LESSON_PASS_SCORE, 'action': 'overhead_not_captured',
+                'reason': 'No overhead contact was visible, so this clip did not grade the overhead lesson.'}, []
+    nodes = [dict(n) for n in memory.get('curriculum_nodes') or []]
+    target = next((n for n in nodes if n.get('id') == metadata.node_id and n.get('status') != 'locked'), None) \
+        or next((n for n in nodes if n.get('status') == 'active'), None)
+    raw = payload['pose_analysis'].get('raw_angles', {})
+    flaw = {'session_id': session_id, 'node_id': target['id'] if target else None,
+            'primary_flaw': payload.get('primary_flaw') or payload['biomechanical_diagnosis'],
+            'overall_score': overall_score, 'verification_status': payload['verification_status'],
+            'measured': {k: raw[k] for k in argon_analysis.ANGLE_LABELS if k in raw}, 'at': _now()}
+    flaws = ([flaw] + list(memory.get('recent_flaws') or []))[:MAX_RECENT_FLAWS]
+    base = {'overall_score': overall_score, 'pass_score': LESSON_PASS_SCORE}
+
+    if target is None:
+        db_mongo.update_athlete_memory(user_id, {'recent_flaws': flaws})
+        return {**base, 'action': 'no_active_lesson'}, []
+
+    if overall_score >= LESSON_PASS_SCORE:
+        if target['status'] != 'completed':
+            memory = db_mongo.set_lesson_node_status(user_id, target['id'], 'completed')
+        memory = db_mongo.update_athlete_memory(user_id, {'recent_flaws': flaws})
+        nxt = next((n for n in memory['curriculum_nodes'] if n.get('status') == 'active'), None)
+        widgets = [onboarding_api.home_path_widget(memory)]
+        if nxt and nxt.get('drill_spec'):
+            spec = nxt['drill_spec']
+            widgets.append({'widget_type': 'DrillCardWidget', 'id': spec.get('drill_id') or nxt['id'],
+                            **{k: spec[k] for k in ('title', 'instruction', 'target_reps', 'focus_cue')}})
+        return {**base, 'action': 'lesson_completed', 'node_id': target['id'], 'node_title': target['title'],
+                'next_node_id': nxt['id'] if nxt else None, 'next_node_title': nxt['title'] if nxt else None}, widgets
+
+    sport = memory.get('sport') or metadata.sport
+    threshold = argon_analysis.level_threshold(sport, memory.get('skill_focus') or metadata.stroke_type, memory.get('level'))
+    comparison = _pro_comparison_card(payload)
+    pro_elbow = next((a['pro_deg'] for a in comparison['angles'] if a['metric'] == 'right_elbow_contact_deg'), None)
+    drill = {'id': f'remedial_drill_{session_id[:12]}', 'title': f"Fix for {target['title']}"[:120],
+             'instruction': payload['live_drill_prescription'],
+             'target_reps': int((target.get('drill_spec') or {}).get('target_reps') or 10),
+             'focus_cue': payload.get('concise_audio_cue') or 'Reach tall through contact',
+             'youtube_url': target.get('youtube_url'), 'node_id': target['id'],
+             'source_session_id': session_id, 'assigned_at': _now()}
+    quiz = _remedial_quiz(f'remedial_quiz_{session_id[:12]}', sport, float(raw.get('right_elbow_contact_deg', 0.0)),
+                          threshold, memory.get('level'), comparison.get('matched_pro'), pro_elbow)
+    for node in nodes:
+        if node['id'] == target['id']:
+            node['remedial_drill_id'] = drill['id']
+            node['remedial_quiz'] = {k: quiz[k] for k in ('id', 'question', 'options', 'correct_index', 'explanation')}
+            node['attempts'] = int(node.get('attempts') or 0) + 1
+    assigned = ([d for d in memory.get('assigned_drills') or [] if d.get('node_id') != target['id']] + [drill])[-10:]
+    memory = db_mongo.update_athlete_memory(user_id, {'curriculum_nodes': nodes, 'assigned_drills': assigned,
+                                                      'recent_flaws': flaws})
+    widgets = [onboarding_api.home_path_widget(memory),
+               {'widget_type': 'DrillCardWidget', **{k: drill[k] for k in ('id', 'title', 'instruction', 'target_reps', 'focus_cue')}},
+               quiz]
+    return {**base, 'action': 'remedial_assigned', 'node_id': target['id'], 'node_title': target['title'],
+            'drill_id': drill['id'], 'quiz_id': quiz['id'], 'threshold_deg': threshold}, widgets
+
+
+def _feedback(payload: dict[str, Any], overall_score: int | None = None,
+              adaptation: dict[str, Any] | None = None) -> dict[str, Any]:
     # Do not invent the branch's overall score: no calibrated scoring model exists.
     pose = payload['pose_analysis']
     timestamp = pose.get('peak_contact_timestamp_ms')
@@ -126,6 +449,9 @@ def _feedback(payload: dict[str, Any]) -> dict[str, Any]:
         'verification_status': payload['verification_status'],
         'pose_analysis': payload['pose_analysis'],
         'demo_mode': payload['demo_mode'],
+        'overall_score': overall_score,
+        'pro_comparison_card': _pro_comparison_card(payload),
+        'adaptation': adaptation,
     }
 
 
@@ -153,16 +479,48 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                     user_name=metadata.user_id, heart_rate_bpm=heart_rate,
                     active_calories_kcal=sum(energies) if energies else None, fatigue_state=None,
                     apple_watch_payload=None, user_lon=-0.1328, user_lat=51.5248,
+                    sport=metadata.sport,
                 )
-            record.update(status='COMPLETED', gemini_feedback=_feedback(payload),
-                          kinematic_vector=payload['pose_analysis']['pose_vector'],
-                          pipeline_session_id=payload['session_id'],
-                          apple_watch_biometrics=payload.get('apple_watch_biometrics'),
-                          active_widgets=[{
-                              'widget_type': 'DrillCardWidget', 'id': f'{session_id}-drill',
-                              'title': 'Practice focus', 'instruction': payload['live_drill_prescription'],
-                              'focus_cue': payload['verification_status'], 'target_reps': 10,
-                          }], error_message=None)
+            llm_source = payload.get('llm_source') or ('gemini' if payload.get('coaching_status') == 'live' else 'fallback')
+            llm_model = payload.get('llm_model') or payload.get('coaching_model', 'deterministic_fallback')
+            llm_error = payload.get('llm_error') or payload.get('coaching_error_type')
+            video_used = payload.get('video_used', False)
+            latency_ms = payload.get('latency_ms', 0)
+            overall_score = payload.get('overall_score')
+            measured = not payload['pose_analysis'].get('used_fallback') and bool(payload['pose_analysis'].get('raw_angles'))
+            if overall_score is None and measured:
+                overall_score = 88 if payload.get('verification_status') == 'PASS' else 68
+            primary_flaw = payload.get('primary_flaw') or payload.get('biomechanical_diagnosis')
+
+            adaptation, adapted_widgets = await run_in_threadpool(
+                _adapt_curriculum, metadata.user_id, session_id, metadata, payload,
+                int(overall_score) if overall_score is not None else None)
+            widgets = adapted_widgets or [{
+                'widget_type': 'DrillCardWidget',
+                'id': f'{session_id}-drill',
+                'title': 'Practice focus' if measured else 'Re-film tip',
+                'instruction': payload['live_drill_prescription'],
+                'focus_cue': payload.get('concise_audio_cue', payload['verification_status']),
+                'target_reps': 10,
+            }]
+
+            record.update(
+                status='COMPLETED',
+                overall_score=overall_score,
+                primary_flaw=primary_flaw,
+                llm_source=llm_source,
+                llm_model=llm_model,
+                llm_error=llm_error,
+                video_used=video_used,
+                latency_ms=latency_ms,
+                gemini_feedback=_feedback(payload, int(overall_score) if overall_score is not None else None, adaptation),
+                kinematic_vector=payload['pose_analysis']['pose_vector'],
+                pipeline_session_id=payload['session_id'],
+                apple_watch_biometrics=payload.get('apple_watch_biometrics'),
+                adaptation=adaptation,
+                active_widgets=widgets,
+                error_message=None
+            )
         except HTTPException as exc:
             record.update(status='FAILED', error_message=json.dumps(exc.detail) if isinstance(exc.detail, dict) else str(exc.detail),
                           error_code=exc.status_code)
@@ -182,6 +540,8 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=json.loads(exc.json())) from exc
         own(request, parsed.user_id)
+        if not sports_config.is_skill_analysis_ready(parsed.sport, parsed.stroke_type):
+            raise HTTPException(status_code=422, detail="skill_not_supported_yet")
         for point in parsed.telemetry:
             try:
                 require_recent(datetime.fromtimestamp(point.timestamp_ms / 1000, timezone.utc).isoformat())
@@ -239,6 +599,24 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
         # Raw telemetry remains stored server-side; Android consumes the summary and feedback.
         return {k: v for k, v in record.items() if k not in {'telemetry', 'request_fingerprint'}}
 
+    @router.post('/sdui/actions')
+    async def sdui_action(request: Request, req: WidgetActionRequest) -> dict[str, Any]:
+        """Memory-aware SDUI callbacks; registered ahead of (and replacing) the legacy app.api.v1.sdui route."""
+        record = await run_in_threadpool(_get, 'android_sessions', req.session_id) if req.session_id else None
+        if record is not None:
+            user_id = own(request, record['user_id'])
+            widgets = record.get('active_widgets') or []
+        else:
+            # Home feed actions (no analysis session) operate on the shared memory's home widgets.
+            user_id = principal(request)['user_id']
+            memory = await run_in_threadpool(db_mongo.get_athlete_memory, user_id)
+            widgets = onboarding_api.home_widgets(memory)
+        widgets = await run_in_threadpool(_apply_widget_action, user_id, widgets, req)
+        if record is not None:
+            record.update(active_widgets=widgets, updated_at=_now())
+            await run_in_threadpool(_put, 'android_sessions', record['session_id'], record)
+        return {'session_id': req.session_id, 'widgets': widgets}
+
     @router.get('/cadence/schedule/{user_id}')
     async def get_schedule(request: Request, user_id: str) -> dict[str, Any]:
         own(request, user_id)
@@ -253,12 +631,18 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
 
     @router.websocket('/live/stream')
     async def live(websocket: WebSocket) -> None:
+        """Live drill stream: `pose` frames get rep-graded form cues; bare `{heart_rate}` packets keep the HR rule."""
         try:
             identity = authenticate(websocket.headers, websocket.cookies)
         except HTTPException:
             await websocket.close(code=4401)
             return
+        user_id = websocket.query_params.get('user_id') or identity['user_id']
+        if identity['role'] != 'admin' and user_id != identity['user_id']:
+            await websocket.close(code=4403)
+            return
         await websocket.accept()
+        coach: LiveFormCoach | None = None
         try:
             while True:
                 packet = await websocket.receive_json()
@@ -269,6 +653,22 @@ def create_android_router(analyze: Callable[..., Any], broadcast: Callable[..., 
                     return
                 if not isinstance(packet, dict):
                     await websocket.send_json({'error': 'Expected a telemetry object'})
+                    continue
+                kind = packet.get('type')
+                if kind in ('hello', 'refresh', 'pose') and coach is None:
+                    coach = await run_in_threadpool(LiveFormCoach, user_id)
+                if kind in ('hello', 'refresh'):
+                    # refresh: re-read athlete_memory after a voice command changed level or skill.
+                    await websocket.send_json(await run_in_threadpool(coach.reload))
+                    continue
+                if kind == 'pose':
+                    try:
+                        frame = LivePoseFrame.model_validate(packet)
+                    except ValidationError:
+                        await websocket.send_json({'error': 'pose needs 33 [x, y, z, visibility] landmarks'})
+                        continue
+                    for message in coach.ingest(frame):
+                        await websocket.send_json(message)
                     continue
                 try:
                     # The branch's keyframe packets have no timestamp field requirement.

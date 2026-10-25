@@ -1,5 +1,6 @@
 package com.tempo.app.repository
 
+import com.tempo.app.data.PlayerIdentity
 import com.tempo.app.data.local.UserProfileDao
 import com.tempo.app.data.local.UserProfileEntity
 import kotlinx.coroutines.flow.Flow
@@ -14,18 +15,24 @@ interface UserProfileRepository {
 
 @Singleton
 class UserProfileRepositoryImpl @Inject constructor(
-    private val userProfileDao: UserProfileDao
+    private val userProfileDao: UserProfileDao,
+    private val identity: PlayerIdentity
 ) : UserProfileRepository {
 
     override fun getUserProfile(): Flow<UserProfileEntity?> {
-        return userProfileDao.getUserProfile()
+        return userProfileDao.getUserProfile(identity.userId)
     }
 
     override suspend fun getUserProfileOnce(): UserProfileEntity? {
-        return userProfileDao.getUserProfileOnce()
+        return userProfileDao.getUserProfileOnce(identity.userId)
     }
 
     override suspend fun saveUserProfile(profile: UserProfileEntity) {
-        userProfileDao.saveUserProfile(profile)
+        val unifiedProfile = if (profile.userId.isBlank() || profile.userId != identity.userId) {
+            profile.copy(userId = identity.userId)
+        } else {
+            profile
+        }
+        userProfileDao.saveUserProfile(unifiedProfile)
     }
 }
